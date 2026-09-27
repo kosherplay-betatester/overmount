@@ -120,6 +120,27 @@ public class SensorParsingTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Mahm_cpu_values_come_from_source_ids_or_per_core_entries_when_the_combined_ones_are_off()
+    {
+        // Only per-core graphs switched on in Afterburner (no source ids): hottest core, average usage.
+        var perCore = MahmReader.Parse(Mahm(
+            M("CPU1 temperature", 61), M("CPU2 temperature", 74), M("CPU1 usage", 20), M("CPU2 usage", 40),
+            M("GPU temperature", 55, gpu: 0)))!.ToSnapshot(new SensorOptions());
+        Assert.Equal(74, perCore.CpuTemp);
+        Assert.Equal(30, perCore.CpuLoad);
+        Assert.Null(perCore.CpuPower);
+
+        // Unusual names but real source ids.
+        var byId = MahmReader.Parse(Mahm(
+            M("CPU package temperature", 68, src: MahmSource.CpuTemperature), M("CPU total usage", 42, src: MahmSource.CpuUsage),
+            M("CPU package power", 95.5f, src: MahmSource.CpuPower), M("GPU temperature", 55, gpu: 0, src: MahmSource.GpuTemperature)))!
+            .ToSnapshot(new SensorOptions());
+        Assert.Equal(68, byId.CpuTemp);
+        Assert.Equal(42, byId.CpuLoad);
+        Assert.Equal(95.5, byId.CpuPower);
+    }
+
+    [Fact]
     public void Mahm_source_ids_pick_the_gpu_drawing_the_most_power()
     {
         var data = MahmReader.Parse(Mahm(

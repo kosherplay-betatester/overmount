@@ -45,7 +45,7 @@ public class WindowsSensorsTests
     [Fact]
     public void Hub_fills_gaps_with_windows_values_but_afterburner_wins()
     {
-        var windows = new Snapshot { CpuLoad = 11, GpuTemp = 50, GpuLoad = 12, GpuPower = 99, VramUsedMb = 1000, VramTotalMb = 16000 };
+        var windows = new Snapshot { CpuLoad = 11, CpuPower = 64.5, GpuTemp = 50, GpuLoad = 12, GpuPower = 99, VramUsedMb = 1000, VramTotalMb = 16000 };
         using var hub = new SensorHub(new SensorOptions(), () => 32000, () => 8000, () => 12000, () => windows);
         var mahm = SensorBlobs.Mahm(SensorBlobs.M("GPU temperature", 64), SensorBlobs.M("CPU temperature", 71));
 
@@ -56,7 +56,19 @@ public class WindowsSensorsTests
         Assert.Equal(12, s.GpuLoad);    // Windows fills the gap
         Assert.Equal(99, s.GpuPower);
         Assert.Equal(11, s.CpuLoad);
+        Assert.Equal(64.5, s.CpuPower); // the CPU's own energy counters when Afterburner has no CPU power
         Assert.Equal(1000, s.VramUsedMb);
         Assert.Equal(16000, s.VramTotalMb); // the driver's total beats the registry estimate
+    }
+
+    [Fact]
+    public void Cpu_package_watts_come_from_the_rapl_package_counters()
+    {
+        // "\Energy Meter(*)\Power" reports milliwatts per RAPL domain; cores are part of the package, _Total is always 0.
+        Assert.Equal(65.4, WindowsSensors.PackageWatts([("RAPL_Package0_PKG", 65400), ("RAPL_Package0_Core0_CORE", 5000), ("_Total", 0)]));
+        Assert.Equal(180, WindowsSensors.PackageWatts([("rapl_package0_pkg", 90000), ("rapl_package1_pkg", 90000)])); // two sockets
+        Assert.Null(WindowsSensors.PackageWatts([("RAPL_Package0_Core0_CORE", 5000), ("_Total", 0)]));
+        Assert.Null(WindowsSensors.PackageWatts([("RAPL_Package0_PKG", 0)]));        // not a real reading
+        Assert.Null(WindowsSensors.PackageWatts([("RAPL_Package0_PKG", 5_000_000)])); // 5 kW: garbage
     }
 }

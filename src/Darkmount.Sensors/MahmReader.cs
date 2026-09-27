@@ -17,6 +17,7 @@ public sealed record MahmEntry(string Name, string Units, double? Value, uint Gp
 public static class MahmSource
 {
     public const uint GpuTemperature = 0x00, GpuUsage = 0x30, GpuMemoryUsage = 0x31, GpuPower = 0x61;
+    public const uint CpuTemperature = 0x80, CpuUsage = 0x90, CpuPower = 0x100;
     public const uint Unknown = 0xFFFFFFFF;
 
     /// <summary>Ids below this belong to a GPU (temperatures, clocks, usages, voltages, frame rates, power).</summary>
@@ -103,9 +104,11 @@ public sealed partial class MahmData
 
         return new Snapshot
         {
-            CpuTemp = Value("CPU temperature"),
-            CpuLoad = Value("CPU usage"),
-            CpuPower = Value("CPU power"),
+            // The combined CPU entries by name, else by source id, else from the per-core entries ("CPU3 temperature"),
+            // so CPU values still show when only some of Afterburner's CPU graphs are switched on.
+            CpuTemp = Value("CPU temperature") ?? CpuValue(MahmSource.CpuTemperature, "temperature", average: false),
+            CpuLoad = Value("CPU usage") ?? CpuValue(MahmSource.CpuUsage, "usage", average: true),
+            CpuPower = Value("CPU power") ?? CpuValue(MahmSource.CpuPower, null, average: false),
             RamUsedMb = Value("RAM usage"),
             GpuTemp = GpuValue(gpu, MahmSource.GpuTemperature, "temperature"),
             GpuLoad = GpuValue(gpu, MahmSource.GpuUsage, "usage"),
@@ -124,6 +127,24 @@ public sealed partial class MahmData
         if (_hasSourceIds && Entries.FirstOrDefault(e => e.SrcId == srcId && e.Gpu == gpu - 1) is { Value: { } byId }) return byId;
         return Value($"GPU{gpu} {metric}") ?? (gpu == 1 ? Value($"GPU {metric}") : null);
     }
+
+    /// <summary>
+    /// A CPU value from the entries carrying its source id, else from the per-core "CPU{n} metric" entries: the hottest
+    /// core for temperature, the average for usage.
+    /// </summary>
+    private double? CpuValue(uint srcId, string? perCoreMetric, bool average)
+    {
+        var values = _hasSourceIds ? Entries.Where(e => e.SrcId == srcId && e.Value is not null).Select(e => e.Value!.Value).ToList() : [];
+        if (values.Count == 0 && perCoreMetric is not null)
+            values = Entries.Where(e => e.Value is not null && CpuCoreRegex().Match(e.Name) is { Success: true } m
+                                        && m.Groups[1].Value.Equals(perCoreMetric, StringComparison.OrdinalIgnoreCase))
+                .Select(e => e.Value!.Value).ToList();
+        if (values.Count == 0) return null;
+        return average ? values.Average() : values.Max();
+    }
+
+    [GeneratedRegex(@"^CPU\d+\s+(.+)$", RegexOptions.IgnoreCase)]
+    private static partial Regex CpuCoreRegex();
 
     internal static (int Index, string Metric)? ParseGpuName(string name)
     {

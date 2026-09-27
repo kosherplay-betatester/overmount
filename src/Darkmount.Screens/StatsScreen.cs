@@ -96,6 +96,10 @@ public sealed class StatsScreen : IDockScreen
         float left = panel.Left + 11;
         float colRight = panel.Left + LeftColumn;
         var primary = Layout.Primary;
+        // A missing value (CPU temperature without Afterburner) isn't worth the big spot: show the next one that exists.
+        if (ValueOf(m, primary) is null && Enum.GetValues<StatsValue>().FirstOrDefault(v => ValueOf(m, v) is not null) is var available
+            && ValueOf(m, available) is not null)
+            primary = available;
         var secondary = Enum.GetValues<StatsValue>().Where(v => v != primary).ToArray(); // in Temperature, Load, Power order
         double? big = ValueOf(m, primary);
 
@@ -110,7 +114,7 @@ public sealed class StatsScreen : IDockScreen
             float labelBaseline = panel.Top + 16;
             canvas.DrawText(label, left, labelBaseline, SKTextAlign.Left, labelFont, accentPaint);
             // Windows can't read CPU temperature without a monitoring app: say what would provide it.
-            if (big is null && primary == StatsValue.Temperature && label == "CPU")
+            if (m.Temp is null && label == "CPU")
             {
                 using var hintFont = Theme.Font(Theme.SemiBold, 9.5f);
                 using var hintPaint = Theme.Fill(Theme.TextDim);

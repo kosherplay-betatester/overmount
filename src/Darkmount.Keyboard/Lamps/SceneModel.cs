@@ -10,6 +10,7 @@ public enum SceneEffect
     Static, ColorWave, Tornado, Breathing, Matrix, Reactive, Ripple, Rainbow, Plasma, Aurora, Fire, Ocean, Twinkle, Rain,
     Heartbeat, Police, Scanner, ColorCycle, CpuTemperature, PerformanceMeter, TypingHeatmap, AudioPulse, AudioSpectrum,
     Lava, Candy, ScreenSync, PerKey,
+    Starfield, Fireworks, Comet, Lightning, Glitch, Radar, Disco, Snow, Bubbles, Embers, Fireflies,
 }
 
 /// <summary>How <see cref="LightLayer.Colors"/> is read: Single = [0], Dual = [0] and [1], Gradient = all (2..7 stops, evenly spaced).</summary>

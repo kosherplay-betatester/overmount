@@ -175,6 +175,9 @@ public class LightingSceneTests
     [InlineData(SceneEffect.Twinkle)] [InlineData(SceneEffect.Rain)] [InlineData(SceneEffect.Heartbeat)]
     [InlineData(SceneEffect.Police)] [InlineData(SceneEffect.Scanner)] [InlineData(SceneEffect.ColorCycle)]
     [InlineData(SceneEffect.Lava)] [InlineData(SceneEffect.Candy)]
+    [InlineData(SceneEffect.Starfield)] [InlineData(SceneEffect.Fireworks)] [InlineData(SceneEffect.Comet)]
+    [InlineData(SceneEffect.Glitch)] [InlineData(SceneEffect.Radar)] [InlineData(SceneEffect.Disco)] [InlineData(SceneEffect.Snow)]
+    [InlineData(SceneEffect.Bubbles)] [InlineData(SceneEffect.Embers)] [InlineData(SceneEffect.Fireflies)]
     public void Animated_effects_change_over_time(SceneEffect effect)
     {
         var scene = Scene(SceneEffects.CreateLayer(effect));
@@ -577,6 +580,29 @@ public class LightingSceneTests
             Seconds = 1, Lamps = Board, KeyPressTimes = new Dictionary<int, double> { [KeyIds.Esc] = 1 },
         });
         Assert.Equal((255, 255, 255), Rgb(pressed[LampOf(KeyIds.Esc)]));
+    }
+
+    [Fact]
+    public void Lightning_is_a_dark_sky_with_occasional_bright_flashes()
+    {
+        var scene = Scene(SceneEffects.CreateLayer(SceneEffect.Lightning));
+        var frames = Enumerable.Range(0, 400).Select(i => SceneRenderer.Render(scene, Ctx(i * 0.05))).ToList(); // 20 s
+        Assert.Contains(frames, f => f.Values.Any(c => Max(c) > 200));            // a strike
+        Assert.Contains(frames, f => f.Values.All(c => Max(c) < 40));              // and calm between strikes
+    }
+
+    [Fact]
+    public void Presets_are_grouped_into_categories_and_the_default_comes_first()
+    {
+        var categories = ScenePresets.Categories;
+        Assert.True(categories.Count >= 6);
+        Assert.All(categories, c => Assert.NotEmpty(c.Scenes));
+        Assert.Equal(ScenePresets.All.Select(p => p.Name), categories.SelectMany(c => c.Scenes).Select(p => p.Name));
+        Assert.Equal("Rainbow wave", ScenePresets.All[0].Name); // the scene new users start with
+        Assert.True(ScenePresets.All.Count >= 70, $"{ScenePresets.All.Count} presets");
+        // Every effect except the special ones appears in at least one preset.
+        var used = ScenePresets.All.SelectMany(p => p.Layers).Select(l => l.Effect).ToHashSet();
+        Assert.All(Enum.GetValues<SceneEffect>().Where(e => e is not SceneEffect.PerKey), e => Assert.Contains(e, used));
     }
 
     [Fact]

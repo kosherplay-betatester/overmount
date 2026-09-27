@@ -63,7 +63,7 @@ internal delegate Rgba Shader(in Pixel p);
 /// The effect maths. Each effect turns a <see cref="LayerFrame"/> into a per-lamp <see cref="Shader"/>; per-frame work
 /// (ripple centres, lava blobs, sensor lookups) happens once in the factory, not per lamp.
 /// </summary>
-internal static class SceneShaders
+internal static partial class SceneShaders
 {
     /// <summary>Width / height of the keyboard: distances and angles use X × Aspect so circles look round.</summary>
     public const double Aspect = 3.6;
@@ -106,6 +106,17 @@ internal static class SceneShaders
         SceneEffect.Candy => Candy(f),
         SceneEffect.ScreenSync => ScreenSync(f),
         SceneEffect.PerKey => PerKey(f),
+        SceneEffect.Starfield => Starfield(f),
+        SceneEffect.Fireworks => Fireworks(f),
+        SceneEffect.Comet => Comet(f),
+        SceneEffect.Lightning => Lightning(f),
+        SceneEffect.Glitch => Glitch(f),
+        SceneEffect.Radar => Radar(f),
+        SceneEffect.Disco => Disco(f),
+        SceneEffect.Snow => Particles(f, SnowStyle),
+        SceneEffect.Bubbles => Particles(f, BubbleStyle),
+        SceneEffect.Embers => Particles(f, EmberStyle),
+        SceneEffect.Fireflies => Particles(f, FireflyStyle),
         _ => (in Pixel _) => Rgba.Clear,
     };
 

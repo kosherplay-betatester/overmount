@@ -3,7 +3,7 @@ namespace Darkmount.Sensors;
 /// <summary>
 /// Combines HWiNFO, MSI Afterburner, RTSS and Windows into one <see cref="Snapshot"/> per call.
 /// Per field the first source with a value wins: HWiNFO, then Afterburner, then Windows' own sensors
-/// (<see cref="WindowsSensors"/>: CPU load, GPU load/temperature/VRAM, NVIDIA watts), so a PC without any monitoring
+/// (<see cref="WindowsSensors"/>: CPU load and watts, GPU load/temperature/VRAM, NVIDIA watts), so a PC without any monitoring
 /// app still shows real numbers.
 /// </summary>
 public sealed class SensorHub : IDisposable
@@ -98,7 +98,7 @@ public sealed class SensorHub : IDisposable
         return new Snapshot
         {
             CpuTemp = h?.CpuTemp ?? m?.CpuTemp,
-            CpuPower = h?.CpuPower ?? m?.CpuPower,
+            CpuPower = h?.CpuPower ?? m?.CpuPower ?? w?.CpuPower,
             CpuLoad = h?.CpuLoad ?? m?.CpuLoad ?? w?.CpuLoad,
             GpuTemp = h?.GpuTemp ?? m?.GpuTemp ?? w?.GpuTemp,
             GpuPower = h?.GpuPower ?? m?.GpuPower ?? w?.GpuPower,

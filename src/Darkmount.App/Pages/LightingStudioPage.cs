@@ -72,14 +72,24 @@ public sealed class LightingStudioPage : Ui.Page
         var s = get();
         _scene = (s.Scene ?? ScenePresets.All[0]).Clone();
 
-        // Presets gallery
-        var presets = new FlowLayoutPanel { AutoSize = true, WrapContents = true, MaximumSize = new Size(920, 0) };
-        foreach (var preset in ScenePresets.All)
+        // Presets gallery, by category ("Nature", "Gaming", …); the tooltip describes each one.
+        var presets = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        foreach (var (category, scenes) in ScenePresets.Categories)
         {
-            var b = Ui.Button(preset.Name, (_, _) => LoadPreset(preset));
-            b.MinimumSize = new Size(124, 34);
-            new ToolTip().SetToolTip(b, preset.Description);
-            presets.Controls.Add(b);
+            presets.Controls.Add(new Label
+            {
+                Text = category.ToUpperInvariant(), AutoSize = true, ForeColor = Ui.Dim, Font = new Font("Segoe UI Semibold", 8.5f),
+                Margin = new Padding(2, 8, 0, 2), UseMnemonic = false,
+            });
+            var row = new FlowLayoutPanel { AutoSize = true, WrapContents = true, MaximumSize = new Size(1000, 0), Margin = new Padding(0) };
+            foreach (var preset in scenes)
+            {
+                var b = Ui.Button(preset.Name, (_, _) => LoadPreset(preset));
+                b.MinimumSize = new Size(124, 34);
+                new ToolTip().SetToolTip(b, preset.Description);
+                row.Controls.Add(b);
+            }
+            presets.Controls.Add(row);
         }
         Heading("Presets");
         AddFull(presets);

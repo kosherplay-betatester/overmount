@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea043?style=flat-square" alt="MIT license"></a>
 </p>
 
-**OverMount** takes over your **be quiet! Dark Mount** (and Light Mount) keyboard and makes it do far more than the stock software. You get a live hardware dashboard on the media dock with **FPS and 1% lows** in games. You get IO Center-style **per-key RGB** with layers, paint mode and 32 premade scenes, plus lighting that reacts to your music, your screen and your typing. And you get macros, key remapping, per-game profiles, a focus timer, and one-click import of your IO Center profiles.
+**OverMount** takes over your **be quiet! Dark Mount** (and Light Mount) keyboard and makes it do far more than the stock software. You get a live hardware dashboard on the media dock with **FPS and 1% lows** in games. You get IO Center-style **per-key RGB** with layers, paint mode and 76 premade scenes, plus lighting that reacts to your music, your screen and your typing. And you get macros, key remapping, per-game profiles, a focus timer, and one-click import of your IO Center profiles.
 
 It's one small tray app that installs in seconds with no admin rights, and it updates itself.
 
@@ -23,7 +23,7 @@ It's one small tray app that installs in seconds with no admin rights, and it up
 | | |
 |---|---|
 | 🎮 **Game dashboard on the dock** | CPU/GPU temperature, load and watts with live graphs, RAM/VRAM, and **FPS + 1% low** when a game runs (measured by OverMount itself from RivaTuner frame times). Pick what's big: temperature, load or watts. |
-| 🌈 **Lighting studio** | Stack up to 8 layers (effects on any keys or edge LEDs), **paint single keys** in any colour, and start from 32 premade scenes. Up to 30 fps. |
+| 🌈 **Lighting studio** | Stack up to 8 layers (effects on any keys or edge LEDs), **paint single keys** in any colour, and start from 76 premade scenes in 9 categories. Up to 30 fps. |
 | 🎵 **Reactive lighting** | Audio spectrum and audio pulse (from whatever your PC plays), screen sync (Ambilight), typing ripples and heatmaps, and CPU-temperature colours. |
 | 🧠 **Smart overlays** | Caps/Num/Scroll lock glow, a volume bar on F1–F12, a red mic-mute key, a shortcut helper while you hold Ctrl/Alt/Win, and focus-timer progress. Lights fade out when you lock the PC. |
 | 🖥️ **Six dock screens** | Stats, Now playing (Spotify, browsers…), Clock & calendar, Network, Focus timer, and your own GIF, video or pictures. Rotate them automatically or let smart screens pick. |
@@ -39,13 +39,14 @@ One **Lighting** page, one switch: **Studio** (OverMount draws layers, per-key c
 
 <p align="center"><img src="docs/images/app-lighting-paint.png" alt="Lighting studio with a paint layer and the edge-LED ring" width="92%"></p>
 
-- **Presets**: click one of 32 scenes (Cyberpunk, Synthwave, Aurora, Fire, Gamer WASD, Audio spectrum, Screen sync…), then tweak it.
+- **Presets**: 76 scenes in 9 categories (Signature, Neon & synth, Space, Nature, Gaming, Party & music, Seasonal, Typing, System): Hyperspace, Fireworks show, Campfire, Thunderstorm, Cherry blossom, Tactical FPS, Disco fever, Halloween, Cyberpunk, Aurora, Gamer WASD, Screen sync… Click one, then tweak it.
 - **Layers**: each layer is an effect on the keys and edge LEDs you select. Click, Ctrl+click or drag a box to select, or use **Quick select** (WASD, arrows, F-row, numpad, top/bottom/left/right edge, keyboard ring, numpad ring…). The top layer wins; transparent effects such as Reactive and Ripple let the layers below show through.
 - **Paint layers** (per-key colours): pick a colour and click or drag over keys and edge LEDs. There's an eraser, *Fill everything* and *Clear all*. This matches IO Center's per-key lighting, and it's faster.
 - **Edge LEDs**: all 96 are shown as rings around the keyboard (64) and the numpad (32). Tell OverMount which side your numpad is on.
-- **27 effects**: Static, Color wave, Tornado, Breathing, Matrix, Reactive, Ripple, Rainbow, Plasma, Aurora, Fire, Ocean, Twinkle, Rain, Heartbeat, Police, Scanner, Color cycle, CPU temperature, Performance meter, Typing heatmap, Audio pulse, Audio spectrum, Lava, Candy, Screen sync and Per-key colours.
+- **38 effects**: Static, Color wave, Tornado, Breathing, Matrix, Reactive, Ripple, Rainbow, Plasma, Aurora, Fire, Ocean, Twinkle, Rain, Heartbeat, Police, Scanner, Color cycle, CPU temperature, Performance meter, Typing heatmap, Audio pulse, Audio spectrum, Lava, Candy, Screen sync, Starfield, Fireworks, Comets, Lightning storm, Glitch, Radar, Disco, Snowfall, Bubbles, Embers, Fireflies and Per-key colours.
 
 <p align="center"><img src="docs/images/preset-gallery.png" alt="Eight of the premade lighting scenes" width="100%"></p>
+<p align="center"><img src="docs/images/preset-gallery-new.png" alt="Ten of the new lighting scenes: Hyperspace, Fireworks show, Neon comets, Campfire, Thunderstorm, Cherry blossom, Disco fever, Tactical FPS, Underwater, Halloween" width="100%"></p>
 
 ---
 

@@ -8,8 +8,9 @@ namespace Darkmount.Sensors;
 /// Sensors Windows provides without any monitoring app or admin rights, used for whatever HWiNFO and Afterburner don't
 /// supply: CPU load (system times), GPU load and VRAM (the "GPU Engine" / "GPU Adapter Memory" performance counters
 /// Task Manager uses, any vendor), GPU temperature (the display driver's performance data, as in Task Manager), and on
-/// NVIDIA cards temperature, load, watts and VRAM straight from the driver's NVML library.
-/// CPU temperature and CPU watts need a kernel driver, so they stay with HWiNFO / Afterburner.
+/// NVIDIA cards temperature, load, watts and VRAM straight from the driver's NVML library, and CPU package watts from
+/// the processor's own energy counters (RAPL) that Windows publishes as "\Energy Meter" (AMD Ryzen and Intel).
+/// CPU temperature needs a kernel driver, so it stays with HWiNFO / Afterburner.
 /// </summary>
 public sealed partial class WindowsSensors : IDisposable
 {
@@ -17,6 +18,8 @@ public sealed partial class WindowsSensors : IDisposable
     readonly Nvml? _nvml = Nvml.TryOpen();
     GpuCounters? _counters;
     bool _countersFailed;
+    CpuPowerCounter? _cpuPower;
+    bool _cpuPowerFailed;
     ulong _lastIdle, _lastKernel, _lastUser;
 
     /// <summary>A partial snapshot (null fields = not available). Never throws.</summary>
@@ -24,7 +27,13 @@ public sealed partial class WindowsSensors : IDisposable
     {
         lock (_gate)
         {
-            double? cpuLoad = CpuLoad();
+            double? cpuLoad = CpuLoad(), cpuPower = null;
+            if (_cpuPower is null && !_cpuPowerFailed)
+            {
+                _cpuPower = CpuPowerCounter.TryOpen(); // read from the next sample on (the counter needs two collects)
+                _cpuPowerFailed = _cpuPower is null;
+            }
+            else cpuPower = _cpuPower?.ReadWatts();
             double? gpuTemp = null, gpuLoad = null, gpuPower = null, vramUsed = null, vramTotal = null;
 
             if (_nvml?.Read() is { } n)
@@ -48,7 +57,7 @@ public sealed partial class WindowsSensors : IDisposable
 
             return new Snapshot
             {
-                CpuLoad = cpuLoad, GpuTemp = gpuTemp, GpuLoad = gpuLoad, GpuPower = gpuPower, VramUsedMb = vramUsed, VramTotalMb = vramTotal,
+                CpuLoad = cpuLoad, CpuPower = cpuPower, GpuTemp = gpuTemp, GpuLoad = gpuLoad, GpuPower = gpuPower, VramUsedMb = vramUsed, VramTotalMb = vramTotal,
             };
         }
     }
@@ -152,7 +161,7 @@ public sealed partial class WindowsSensors : IDisposable
             return Combine(engines, memory);
         }
 
-        static List<(string Name, double Value)> Items(nint counter)
+        internal static List<(string Name, double Value)> Items(nint counter)
         {
             uint size = 0;
             var result = new List<(string, double)>();
@@ -177,6 +186,48 @@ public sealed partial class WindowsSensors : IDisposable
         }
 
         public void Dispose() => PdhCloseQuery(_query);
+    }
+
+    // ---------------------------------------------------------------- CPU package power (RAPL energy counters)
+
+    /// <summary>"\Energy Meter(*)\Power": milliwatts per RAPL domain; the "_PKG" instances are the CPU package(s).</summary>
+    sealed class CpuPowerCounter : IDisposable
+    {
+        readonly nint _query, _power;
+
+        CpuPowerCounter(nint query, nint power) => (_query, _power) = (query, power);
+
+        public static CpuPowerCounter? TryOpen()
+        {
+            try
+            {
+                if (PdhOpenQueryW(null, 0, out var query) != 0) return null;
+                if (PdhAddEnglishCounterW(query, @"\Energy Meter(*)\Power", 0, out var power) != 0)
+                {
+                    PdhCloseQuery(query);
+                    return null;
+                }
+                PdhCollectQueryData(query);
+                return new CpuPowerCounter(query, power);
+            }
+            catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException) { return null; }
+        }
+
+        public double? ReadWatts() => PdhCollectQueryData(_query) != 0 ? null : PackageWatts(GpuCounters.Items(_power));
+
+        public void Dispose() => PdhCloseQuery(_query);
+    }
+
+    /// <summary>
+    /// CPU package watts from "\Energy Meter(*)\Power" items (milliwatts): the sum of the "…_PKG" instances (one per CPU
+    /// socket); null without any, or when the total is implausible (0 W while running, or above 1 kW). Pure, for tests.
+    /// </summary>
+    internal static double? PackageWatts(IEnumerable<(string Name, double Value)> items)
+    {
+        var packages = items.Where(i => i.Name.EndsWith("_PKG", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (packages.Count == 0) return null;
+        double watts = packages.Sum(i => i.Value) / 1000.0;
+        return watts is > 0.5 and < 1000 ? watts : null;
     }
 
     /// <summary>
@@ -326,6 +377,7 @@ public sealed partial class WindowsSensors : IDisposable
         lock (_gate)
         {
             _counters?.Dispose();
+            _cpuPower?.Dispose();
             _nvml?.Dispose();
         }
     }

@@ -107,6 +107,39 @@ public static class SceneEffects
             { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FF8AD8", "8AE8FF", "FFF08A", "B89AFF"] },
         new(SceneEffect.ScreenSync, "Screen sync", "Ambilight: keys mirror the matching region of the screen, the edge lights its border.",
             NoModes, NoDirections, false, false, false, false, true, NeedsScreen: true),
+        new(SceneEffect.Starfield, "Starfield", "Stars streak out from the centre like a jump to hyperspace (Inward: flying backwards).",
+            AllModes, [SceneDirection.Outward, SceneDirection.Inward], true, false, false, false, false)
+            { DefaultColors = ["DDEBFF"], DefaultDirection = SceneDirection.Outward },
+        new(SceneEffect.Fireworks, "Fireworks", "Rockets burst all over the keyboard into glittering rings that grow, slow down and fade.",
+            AllModes, NoDirections, true, false, false, false, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FF3040", "FFD000", "40FF70", "30A0FF", "D040FF", "FFFFFF"] },
+        new(SceneEffect.Comet, "Comets", "Comets with long tails race around the frame and orbit across the keys (one per colour, up to four).",
+            AllModes, Turning, true, false, false, false, false)
+            { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["00E5FF", "FF00C8"], DefaultDirection = SceneDirection.Clockwise },
+        new(SceneEffect.Lightning, "Lightning storm", "A dark stormy sky split by sudden lightning bolts and flashes (Dual: flash, sky).",
+            [SceneColorMode.Dual, SceneColorMode.Single], NoDirections, true, false, false, false, true)
+            { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["E0EAFF", "04061A"] },
+        new(SceneEffect.Glitch, "Glitch", "Digital corruption: torn rows, flickering blocks and dead pixels over a dim flowing gradient.",
+            AllModes, NoDirections, true, false, false, false, true)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["00FFF0", "FF00C8", "7000FF", "00FF66"] },
+        new(SceneEffect.Radar, "Radar", "A sweeping radar beam with a fading trail; contacts glow up as it passes (Dual: beam, screen).",
+            [SceneColorMode.Dual, SceneColorMode.Single], Turning, true, false, false, false, true)
+            { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["00FF66", "001A08"], DefaultDirection = SceneDirection.Clockwise },
+        new(SceneEffect.Disco, "Disco", "Blocks of keys jump to new colours on every beat while lights chase around the edges (Single: every colour).",
+            AllModes, NoDirections, true, false, false, false, true)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FF0055", "FFD000", "00FF6A", "00B3FF", "B400FF"] },
+        new(SceneEffect.Snow, "Snowfall", "Soft snowflakes drifting down (Dual: snow, sky).",
+            AllModes, NoDirections, true, false, false, false, false)
+            { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["FFFFFF", "030818"] },
+        new(SceneEffect.Bubbles, "Bubbles", "Glowing bubbles wobbling up from the bottom row (Dual: bubbles, water).",
+            AllModes, NoDirections, true, false, false, false, false)
+            { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["7FF0FF", "001A33"] },
+        new(SceneEffect.Embers, "Embers", "Glowing sparks rising and flickering out, like a campfire (Dual: sparks, glow).",
+            AllModes, NoDirections, true, false, false, false, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FFE08A", "FF8C00", "FF3000"] },
+        new(SceneEffect.Fireflies, "Fireflies", "A few warm lights wandering and blinking in the dark (Dual: fireflies, night).",
+            AllModes, NoDirections, true, false, false, false, false)
+            { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["D8FF4A", "020A02"] },
         new(SceneEffect.PerKey, "Per-key colours", "Paint every key and edge LED its own colour, like IO Center's per-key lighting. " +
             "Unpainted lamps show the layers below.", NoModes, NoDirections, false, false, false, false, false),
     ];
