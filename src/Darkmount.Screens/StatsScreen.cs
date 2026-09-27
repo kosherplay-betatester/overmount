@@ -4,6 +4,18 @@ using SkiaSharp;
 
 namespace Darkmount.Screens;
 
+/// <summary>The CPU/GPU value shown big (the other two are shown small).</summary>
+public enum StatsValue { Temperature, Load, Power }
+
+/// <summary>How the CPU and GPU rows are arranged: which value is big and which lines the graph draws.</summary>
+public sealed record StatsLayout
+{
+    public StatsValue Primary { get; init; } = StatsValue.Temperature;
+    public bool GraphLoad { get; init; } = true;
+    public bool GraphTemperature { get; init; } = true;
+    public bool GraphPower { get; init; }
+}
+
 /// <summary>
 /// The stats matrix. Without a game: CPU, GPU and MEM rows of 80 px. With a game: CPU 60, GPU 60, MEM 40 and
 /// an 80 px FPS row. While alerts are active the rows are laid out below the 36 px alert banner.
@@ -17,6 +29,13 @@ public sealed class StatsScreen : IDockScreen
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     public string Name => "Stats";
+
+    /// <summary>Which value is big and what the graphs show (Dock screen page → Stats layout).</summary>
+    public StatsLayout Layout { get; set; } = new();
+
+    /// <summary>One CPU or GPU row's values and their history.</summary>
+    private readonly record struct Metrics(double? Temp, double? Load, double? Power,
+        IReadOnlyList<double?> TempHistory, IReadOnlyList<double?> LoadHistory, IReadOnlyList<double?> PowerHistory);
 
     public void Render(SKCanvas canvas, ScreenContext ctx)
     {
@@ -32,16 +51,16 @@ public sealed class StatsScreen : IDockScreen
         if (!s.InGame)
         {
             // No alert: 80 / 80 / 80. Alert (204 px): 80 / 80 / 44 - CPU/GPU keep full size, MEM goes compact.
-            DrawChipRow(canvas, Next(80), "CPU", Theme.Cpu, s.CpuTemp, s.CpuLoad, s.CpuPower, h.CpuTemp, h.CpuLoad, h.Capacity, compact: false);
-            DrawChipRow(canvas, Next(80), "GPU", Theme.Gpu, s.GpuTemp, s.GpuLoad, s.GpuPower, h.GpuTemp, h.GpuLoad, h.Capacity, compact: false);
+            DrawChipRow(canvas, Next(80), "CPU", Theme.Cpu, Cpu(s, h), h.Capacity, compact: false);
+            DrawChipRow(canvas, Next(80), "GPU", Theme.Gpu, Gpu(s, h), h.Capacity, compact: false);
             DrawMemRow(canvas, Next(alert ? 44 : 80), s, compact: alert);
         }
         else
         {
             // No alert: 60 / 60 / 40 / 80. Alert (204 px): 54 / 54 / 34 / 62 with a compact FPS row.
             float chip = alert ? 54 : 60;
-            DrawChipRow(canvas, Next(chip), "CPU", Theme.Cpu, s.CpuTemp, s.CpuLoad, s.CpuPower, h.CpuTemp, h.CpuLoad, h.Capacity, compact: true);
-            DrawChipRow(canvas, Next(chip), "GPU", Theme.Gpu, s.GpuTemp, s.GpuLoad, s.GpuPower, h.GpuTemp, h.GpuLoad, h.Capacity, compact: true);
+            DrawChipRow(canvas, Next(chip), "CPU", Theme.Cpu, Cpu(s, h), h.Capacity, compact: true);
+            DrawChipRow(canvas, Next(chip), "GPU", Theme.Gpu, Gpu(s, h), h.Capacity, compact: true);
             DrawMemRow(canvas, Next(alert ? 34 : 40), s, compact: true);
             DrawFpsRow(canvas, Next(alert ? 62 : 80), s, h, compact: alert);
         }
@@ -58,15 +77,27 @@ public sealed class StatsScreen : IDockScreen
 
     // ---------------------------------------------------------------- CPU / GPU
 
-    private static void DrawChipRow(SKCanvas canvas, SKRect panel, string label, SKColor accent,
-        double? temp, double? load, double? power, IReadOnlyList<double?> tempHistory,
-        IReadOnlyList<double?> loadHistory, int capacity, bool compact)
+    private static Metrics Cpu(Snapshot s, MetricHistory h) => new(s.CpuTemp, s.CpuLoad, s.CpuPower, h.CpuTemp, h.CpuLoad, h.CpuPower);
+
+    private static Metrics Gpu(Snapshot s, MetricHistory h) => new(s.GpuTemp, s.GpuLoad, s.GpuPower, h.GpuTemp, h.GpuLoad, h.GpuPower);
+
+    private static double? ValueOf(Metrics m, StatsValue v) => v switch
+    {
+        StatsValue.Load => m.Load, StatsValue.Power => m.Power, _ => m.Temp,
+    };
+
+    private static string UnitOf(StatsValue v) => v switch { StatsValue.Load => "%", StatsValue.Power => "W", _ => "°C" };
+
+    private void DrawChipRow(SKCanvas canvas, SKRect panel, string label, SKColor accent, Metrics m, int capacity, bool compact)
     {
         Theme.DrawPanel(canvas, panel);
         DrawAccentTab(canvas, panel, accent);
 
         float left = panel.Left + 11;
         float colRight = panel.Left + LeftColumn;
+        var primary = Layout.Primary;
+        var secondary = Enum.GetValues<StatsValue>().Where(v => v != primary).ToArray(); // in Temperature, Load, Power order
+        double? big = ValueOf(m, primary);
 
         using var labelFont = Theme.Font(Theme.Bold, compact ? 11 : 12.5f);
         using var accentPaint = Theme.Fill(accent);
@@ -74,16 +105,25 @@ public sealed class StatsScreen : IDockScreen
         if (!compact)
         {
             // CPU                  (label)
-            // 72°C                 (big temperature)
-            // 45 %  ·  88 W        (load, power)
-            canvas.DrawText(label, left, panel.Top + 16, SKTextAlign.Left, labelFont, accentPaint);
-            DrawTemperature(canvas, left, panel.Top + 54, 47, temp);
+            // 72°C                 (big value)
+            // 45 %  ·  88 W        (the other two)
+            float labelBaseline = panel.Top + 16;
+            canvas.DrawText(label, left, labelBaseline, SKTextAlign.Left, labelFont, accentPaint);
+            // Windows can't read CPU temperature without a monitoring app: say what would provide it.
+            if (big is null && primary == StatsValue.Temperature && label == "CPU")
+            {
+                using var hintFont = Theme.Font(Theme.SemiBold, 9.5f);
+                using var hintPaint = Theme.Fill(Theme.TextDim);
+                float hx = left + labelFont.MeasureText(label) + 7;
+                canvas.DrawText(Theme.Ellipsize("needs Afterburner", hintFont, colRight - 6 - hx), hx, labelBaseline, SKTextAlign.Left, hintFont, hintPaint);
+            }
+            DrawBig(canvas, left, panel.Top + 54, 47, big, primary, accent);
             TextRuns.Draw(canvas, left, panel.Top + 70,
-                Value(load, "0"), Theme.Font(Theme.SemiBold, 14), Num(load),
-                " %", Theme.Font(Theme.SemiBold, 11.5f), Theme.TextDim,
+                Value(ValueOf(m, secondary[0]), "0"), Theme.Font(Theme.SemiBold, 14), Num(ValueOf(m, secondary[0])),
+                " " + UnitOf(secondary[0]), Theme.Font(Theme.SemiBold, 11.5f), Theme.TextDim,
                 "  •  ", Theme.Font(Theme.Bold, 11f), Theme.TextDim,
-                Value(power, "0"), Theme.Font(Theme.SemiBold, 14), Num(power),
-                " W", Theme.Font(Theme.SemiBold, 11.5f), Theme.TextDim);
+                Value(ValueOf(m, secondary[1]), "0"), Theme.Font(Theme.SemiBold, 14), Num(ValueOf(m, secondary[1])),
+                " " + UnitOf(secondary[1]), Theme.Font(Theme.SemiBold, 11.5f), Theme.TextDim);
         }
         else
         {
@@ -91,19 +131,37 @@ public sealed class StatsScreen : IDockScreen
             // 72°C         88 W
             float size = CompactTempSize(panel), baseline = CompactBaseline(panel);
             canvas.DrawText(label, left, panel.Top + 13.5f, SKTextAlign.Left, labelFont, accentPaint);
-            DrawTemperature(canvas, left, baseline, size, temp);
+            DrawBig(canvas, left, baseline, size, big, primary, accent);
             TextRuns.DrawRight(canvas, colRight - 6, baseline - 20,
-                Value(load, "0"), Theme.Font(Theme.SemiBold, 14), Num(load),
-                " %", Theme.Font(Theme.SemiBold, 11), Theme.TextDim);
+                Value(ValueOf(m, secondary[0]), "0"), Theme.Font(Theme.SemiBold, 14), Num(ValueOf(m, secondary[0])),
+                " " + UnitOf(secondary[0]), Theme.Font(Theme.SemiBold, 11), Theme.TextDim);
             TextRuns.DrawRight(canvas, colRight - 6, baseline - 2,
-                Value(power, "0"), Theme.Font(Theme.SemiBold, 14), Num(power),
-                " W", Theme.Font(Theme.SemiBold, 11), Theme.TextDim);
+                Value(ValueOf(m, secondary[1]), "0"), Theme.Font(Theme.SemiBold, 14), Num(ValueOf(m, secondary[1])),
+                " " + UnitOf(secondary[1]), Theme.Font(Theme.SemiBold, 11), Theme.TextDim);
         }
 
         var graph = new SKRect(colRight, panel.Top + 5, panel.Right - 5, panel.Bottom - 5);
         DrawGraphFrame(canvas, graph);
-        WaveGraph.Draw(canvas, Inset(graph), loadHistory, 0, 100, accent, fill: true, capacity);
-        WaveGraph.Draw(canvas, Inset(graph), tempHistory, TempMin, TempMax, accent, fill: false, capacity);
+        var inner = Inset(graph);
+        // Load is the filled area; temperature and watts are lines. With load off, the first chosen series is filled.
+        bool fillDone = false;
+        if (Layout.GraphLoad)
+        {
+            WaveGraph.Draw(canvas, inner, m.LoadHistory, 0, 100, accent, fill: true, capacity);
+            fillDone = true;
+        }
+        if (Layout.GraphTemperature)
+        {
+            WaveGraph.Draw(canvas, inner, m.TempHistory, TempMin, TempMax, accent, fill: !fillDone, capacity);
+            fillDone = true;
+        }
+        if (Layout.GraphPower)
+        {
+            double peak = 0;
+            foreach (var v in m.PowerHistory) if (v is double d && d > peak) peak = d;
+            if (m.Power is double now && now > peak) peak = now;
+            WaveGraph.Draw(canvas, inner, m.PowerHistory, 0, Math.Max(50, peak * 1.2), Lighten(accent, 0.35f), fill: !fillDone, capacity);
+        }
     }
 
     /// <summary>Temperature size for compact rows: ~36 px in a 54 px panel, never below 28.</summary>
@@ -111,21 +169,26 @@ public sealed class StatsScreen : IDockScreen
 
     private static float CompactBaseline(SKRect panel) => panel.Bottom - Math.Max(5.5f, panel.Height * 0.12f);
 
-    /// <summary>"72" big + "°C" small; colour shifts orange/red with the temperature.</summary>
-    private static void DrawTemperature(SKCanvas canvas, float x, float baseline, float size, double? temp)
+    /// <summary>
+    /// The big value with its unit as a superscript. Temperature is coloured by how hot it is; load and watts take the
+    /// row's colour (a busy GPU in a game is good news, not an alarm).
+    /// </summary>
+    private static void DrawBig(SKCanvas canvas, float x, float baseline, float size, double? value, StatsValue kind, SKColor accent)
     {
         using var big = Theme.Font(Theme.Bold, size);
-        using var paint = Theme.Fill(temp is null ? Theme.TextDim : Theme.TempColor(temp));
-        string text = Value(temp, "0");
+        var color = value is null ? Theme.TextDim
+            : kind == StatsValue.Temperature ? Theme.TempColor(value) : Lighten(accent, 0.25f);
+        using var paint = Theme.Fill(color);
+        string text = Value(value, "0");
         canvas.DrawText(text, x, baseline, SKTextAlign.Left, big, paint);
         float adv = big.MeasureText(text);
 
-        // "°C" as a superscript: its cap top aligned with the number's cap top.
+        // The unit as a superscript: its cap top aligned with the number's cap top.
         using var unit = Theme.Font(Theme.SemiBold, size * 0.40f);
-        using var unitPaint = Theme.Fill(temp is null ? Theme.TextDim : Theme.TextSecondary);
+        using var unitPaint = Theme.Fill(value is null ? Theme.TextDim : Theme.TextSecondary);
         float capTop = baseline - big.Metrics.CapHeight;
         float unitBaseline = capTop + unit.Metrics.CapHeight;
-        canvas.DrawText("°C", x + adv + size * 0.05f, unitBaseline, SKTextAlign.Left, unit, unitPaint);
+        canvas.DrawText(UnitOf(kind), x + adv + size * 0.05f, unitBaseline, SKTextAlign.Left, unit, unitPaint);
     }
 
     // ---------------------------------------------------------------- MEM

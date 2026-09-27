@@ -177,6 +177,7 @@ public sealed class FramePipeline : IDisposable
             _ => _stats,
         };
 
+        _stats.Layout = settings.StatsLayout ?? new();
         var ctx = new ScreenContext
         {
             Snapshot = snapshot, History = _history, Alerts = alerts, Now = now, Media = media, Network = network, Pomodoro = pomodoro,

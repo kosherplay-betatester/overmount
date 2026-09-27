@@ -72,6 +72,56 @@ public class ScreenRenderTests
         return bitmap;
     }
 
+    private static MetricHistory WavesWithPower(bool game)
+    {
+        var h = new MetricHistory();
+        for (int i = 0; i < 60; i++)
+            h.Add(new Snapshot
+            {
+                CpuTemp = 62 + 8 * Math.Sin(i * 0.25), CpuLoad = 40 + 22 * Math.Sin(i * 0.18 + 1), CpuPower = 60 + 25 * Math.Sin(i * 0.3),
+                GpuTemp = 58 + 6 * Math.Sin(i * 0.2), GpuLoad = Math.Clamp(80 + 25 * Math.Sin(i * 0.12), 0, 100), GpuPower = 230 + 40 * Math.Sin(i * 0.15),
+                Fps = game ? 140 + 10 * Math.Sin(i * 0.3) : null, GameName = game ? "Game.exe" : null,
+            });
+        return h;
+    }
+
+    private static SKBitmap Render(StatsLayout layout, ScreenContext ctx, string name)
+    {
+        var bitmap = DockRenderer.Render(new StatsScreen { Layout = layout }, ctx);
+        Save(bitmap, name);
+        return bitmap;
+    }
+
+    [Fact]
+    public void Layout_with_load_as_the_big_number_and_a_load_only_graph() // GitHub issue #2
+    {
+        var layout = new StatsLayout { Primary = StatsValue.Load, GraphLoad = true, GraphTemperature = false };
+        using var desk = Render(layout, new ScreenContext { Snapshot = Typical, History = WavesWithPower(false) }, "stats-layout-load");
+        using var game = Render(layout, new ScreenContext
+        {
+            Snapshot = Typical with { Fps = 144, FpsLow = 97, GameName = "Game.exe" }, History = WavesWithPower(true),
+        }, "stats-layout-load-game");
+        AssertValidFrame(desk);
+        AssertValidFrame(game);
+    }
+
+    [Fact]
+    public void Layout_with_watts_as_the_big_number_and_a_power_graph()
+    {
+        var layout = new StatsLayout { Primary = StatsValue.Power, GraphLoad = false, GraphTemperature = false, GraphPower = true };
+        using var bmp = Render(layout, new ScreenContext { Snapshot = Typical, History = WavesWithPower(false) }, "stats-layout-power");
+        AssertValidFrame(bmp);
+    }
+
+    [Fact]
+    public void Missing_cpu_temperature_says_what_provides_it()
+    {
+        // No monitoring app: Windows provides CPU load and the GPU values, but not CPU temperature or watts.
+        var windowsOnly = Typical with { CpuTemp = null, CpuPower = null };
+        using var bmp = Render(new StatsLayout(), new ScreenContext { Snapshot = windowsOnly, History = Waves(false) }, "stats-no-cputemp");
+        AssertValidFrame(bmp);
+    }
+
     [Fact]
     public void AllNull_RendersPlaceholders()
     {

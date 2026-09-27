@@ -46,6 +46,7 @@ public sealed class TrayApp : ApplicationContext
     Action? _balloonClick;
     readonly ToolStripMenuItem _takeControl = new("Take control back from IO Center"), _updateItem = new("Check for updates…");
     readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 20_000 };
+    readonly System.Windows.Forms.Timer _companionsTimer = new();
     Setup.ReleaseInfo? _latestRelease;
     DateTime _lastUpdateCheck;
     bool _updating;
@@ -94,6 +95,13 @@ public sealed class TrayApp : ApplicationContext
         _uiTimer.Start();
         _updateTimer.Tick += async (_, _) => await AutoCheckForUpdates();
         _updateTimer.Start();
+        if (!_settings.CompanionsOffered)
+        {
+            // Once: offer the sensor apps if any is missing. Right after logon give Afterburner time to start on its own.
+            _companionsTimer.Interval = Environment.TickCount64 < 5 * 60 * 1000 ? 90_000 : 6_000;
+            _companionsTimer.Tick += async (_, _) => { _companionsTimer.Stop(); await OfferCompanionsOnce(); };
+            _companionsTimer.Start();
+        }
         _overlayTimer.Start();
         _pipeline.Start();
         _rgb.Start();
@@ -149,6 +157,7 @@ public sealed class TrayApp : ApplicationContext
             _focusMenu,
             _pause, new ToolStripMenuItem("Settings…", null, (_, _) => ShowSettings()), _autostart,
             new ToolStripMenuItem("Stop all running macros", null, (_, _) => _macros.StopAll()),
+            new ToolStripMenuItem("Set up sensor apps…", null, (_, _) => ShowCompanions()),
             new ToolStripMenuItem("Open log folder", null, (_, _) => OpenLogs()), _updateItem, new ToolStripSeparator(),
             new ToolStripMenuItem("Exit", null, (_, _) => ExitThread()),
         ]);
@@ -297,11 +306,12 @@ public sealed class TrayApp : ApplicationContext
             new("IO Center is closed", !ioCenter, false,
                 ioCenter ? "IO Center is running, so OverMount has paused. Right-click its tray icon → Exit." : "OverMount controls the keyboard.",
                 "Close IO Center", () => TakeControlFromIoCenter(ask: true)),
-            new("MSI Afterburner is running", !hints.Contains(Darkmount.Sensors.SensorHub.HintAfterburner), false,
-                "Provides CPU/GPU temperature, power, load and FPS for the dashboard.", "Get Afterburner",
-                () => Pages.HomePage.Open("https://www.msi.com/Landing/afterburner/graphics-cards")),
+            new("MSI Afterburner is running (for CPU temperature)", !hints.Contains(Darkmount.Sensors.SensorHub.HintAfterburner)
+                    || !hints.Contains(Darkmount.Sensors.SensorHub.HintHwInfo), false,
+                "GPU temperature, load, VRAM and CPU load come from Windows itself. CPU temperature and CPU watts need MSI " +
+                "Afterburner (or HWiNFO) running.", "Set up", ShowCompanions),
             new("RivaTuner Statistics Server is running", !hints.Contains(Darkmount.Sensors.SensorHub.HintRtss), false,
-                "Detects the running game (FPS row, per-game profiles). Installed together with Afterburner."),
+                "Detects the running game (FPS row, 1% lows, per-game profiles). MSI Afterburner starts it.", "Set up", ShowCompanions),
             new("HWiNFO shared memory (optional)", !hints.Contains(Darkmount.Sensors.SensorHub.HintHwInfo), true,
                 "Optional, more precise sensors: HWiNFO → Settings → Shared Memory Support."),
             new("Windows Dynamic Lighting is off for the keyboard", !_dynamicLightingOn, false,
@@ -476,6 +486,34 @@ public sealed class TrayApp : ApplicationContext
         else frame.Dispose();
     }
 
+    // ---------------------------------------------------------------- sensor apps
+
+    /// <summary>Opens the sensor-apps assistant (install / start / autostart Afterburner, RivaTuner, HWiNFO).</summary>
+    async void ShowCompanions()
+    {
+        try { await Setup.CompanionsDialog.OpenAsync(); }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            Log.Write($"Sensor apps window failed: {e.Message}");
+        }
+    }
+
+    /// <summary>First start: if a sensor app is missing or not running, show the assistant once (it asks before doing anything).</summary>
+    async Task OfferCompanionsOnce()
+    {
+        if (_exiting || _settings.CompanionsOffered) return;
+        bool needed;
+        try { needed = await Setup.CompanionsDialog.NeedsAttentionAsync(); }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            Log.Write($"Sensor apps check failed: {e.Message}");
+            return;
+        }
+        _settings.CompanionsOffered = true;
+        SaveSettings();
+        if (needed && !_exiting) ShowCompanions();
+    }
+
     // ---------------------------------------------------------------- updates
 
     async Task<Setup.ReleaseInfo?> CheckForUpdates()
@@ -606,6 +644,7 @@ public sealed class TrayApp : ApplicationContext
         _uiTimer.Stop();
         _overlayTimer.Stop();
         _updateTimer.Stop();
+        _companionsTimer.Stop();
         _tickTimer.Dispose();
         _pipeline.Dispose();
         _rgb.Dispose();

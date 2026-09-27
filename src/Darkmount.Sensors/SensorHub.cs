@@ -2,12 +2,14 @@ namespace Darkmount.Sensors;
 
 /// <summary>
 /// Combines HWiNFO, MSI Afterburner, RTSS and Windows into one <see cref="Snapshot"/> per call.
-/// Per field the first source with a value wins: HWiNFO, then Afterburner, then Windows.
+/// Per field the first source with a value wins: HWiNFO, then Afterburner, then Windows' own sensors
+/// (<see cref="WindowsSensors"/>: CPU load, GPU load/temperature/VRAM, NVIDIA watts), so a PC without any monitoring
+/// app still shows real numbers.
 /// </summary>
 public sealed class SensorHub : IDisposable
 {
     public const string HintHwInfo = "HWiNFO: enable 'Shared Memory Support' in HWiNFO settings (optional)";
-    public const string HintAfterburner = "Start MSI Afterburner for CPU/GPU/FPS data";
+    public const string HintAfterburner = "MSI Afterburner (or HWiNFO) adds CPU temperature and watts";
     public const string HintRtss = "Start RivaTuner Statistics Server for game detection";
     public const string HintFpsLow = "Afterburner: enable 'Framerate 1% low' in Monitoring settings";
 
@@ -18,6 +20,8 @@ public sealed class SensorHub : IDisposable
     private readonly Func<double?> _ramTotalMb;
     private readonly Func<double?> _ramUsedMb;
     private readonly Func<double?> _vramTotalMb;
+    private readonly Func<Snapshot?> _windows;
+    private readonly WindowsSensors? _windowsSensors;
     private readonly Lock _lock = new();
 
     private int _lastGamePid;
@@ -26,17 +30,22 @@ public sealed class SensorHub : IDisposable
     readonly FrameTimeSampler? _frames;
 
     public SensorHub(SensorOptions options)
-        : this(options, () => SystemInfo.RamTotalMb, () => SystemInfo.RamUsedMb, () => SystemInfo.VramTotalMb)
+        : this(options, () => SystemInfo.RamTotalMb, () => SystemInfo.RamUsedMb, () => SystemInfo.VramTotalMb, windows: null)
     {
         _frames = new FrameTimeSampler();
+        _windowsSensors = new WindowsSensors();
+        _windows = _windowsSensors.Sample;
     }
 
-    internal SensorHub(SensorOptions options, Func<double?> ramTotalMb, Func<double?> ramUsedMb, Func<double?> vramTotalMb)
+    /// <param name="windows">Windows' own sensors (tests pass none, so only the given blobs count).</param>
+    internal SensorHub(SensorOptions options, Func<double?> ramTotalMb, Func<double?> ramUsedMb, Func<double?> vramTotalMb,
+        Func<Snapshot?>? windows = null)
     {
         _options = options;
         _ramTotalMb = ramTotalMb;
         _ramUsedMb = ramUsedMb;
         _vramTotalMb = vramTotalMb;
+        _windows = windows ?? (() => null);
     }
 
     /// <summary>Reads all sources now. Never throws.</summary>
@@ -82,18 +91,22 @@ public sealed class SensorHub : IDisposable
             }
         }
 
+        Snapshot? w;
+        try { w = _windows(); }
+        catch (Exception) { w = null; } // Windows' counters are a bonus; never let them break a sample
+
         return new Snapshot
         {
             CpuTemp = h?.CpuTemp ?? m?.CpuTemp,
             CpuPower = h?.CpuPower ?? m?.CpuPower,
-            CpuLoad = h?.CpuLoad ?? m?.CpuLoad,
-            GpuTemp = h?.GpuTemp ?? m?.GpuTemp,
-            GpuPower = h?.GpuPower ?? m?.GpuPower,
-            GpuLoad = h?.GpuLoad ?? m?.GpuLoad,
+            CpuLoad = h?.CpuLoad ?? m?.CpuLoad ?? w?.CpuLoad,
+            GpuTemp = h?.GpuTemp ?? m?.GpuTemp ?? w?.GpuTemp,
+            GpuPower = h?.GpuPower ?? m?.GpuPower ?? w?.GpuPower,
+            GpuLoad = h?.GpuLoad ?? m?.GpuLoad ?? w?.GpuLoad,
             RamUsedMb = h?.RamUsedMb ?? m?.RamUsedMb ?? _ramUsedMb(),
             RamTotalMb = _ramTotalMb(),
-            VramUsedMb = h?.VramUsedMb ?? m?.VramUsedMb,
-            VramTotalMb = _vramTotalMb(),
+            VramUsedMb = h?.VramUsedMb ?? m?.VramUsedMb ?? w?.VramUsedMb,
+            VramTotalMb = w?.VramTotalMb ?? _vramTotalMb(),
             Fps = fps,
             FpsLow = fpsLow,
             FpsLowLabel = fpsLowLabel,
@@ -133,7 +146,8 @@ public sealed class SensorHub : IDisposable
 
     public void Dispose()
     {
-        // Shared memory is opened and closed per sample; only the frame-time sampler keeps a thread.
+        // Shared memory is opened and closed per sample; the frame-time sampler keeps a thread, Windows' sensors handles.
         _frames?.Dispose();
+        _windowsSensors?.Dispose();
     }
 }

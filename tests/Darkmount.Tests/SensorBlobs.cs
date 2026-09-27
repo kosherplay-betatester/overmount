@@ -18,7 +18,7 @@ internal static class SensorBlobs
     public const int MahmHeader = 32;
     public const int MahmEntry = 1324;
 
-    public static byte[] Mahm(params (string Name, string Units, float Value, uint Gpu)[] entries)
+    public static byte[] Mahm(params (string Name, string Units, float Value, uint Gpu, uint Src)[] entries)
     {
         var b = new byte[MahmHeader + entries.Length * MahmEntry];
         U32(b, 0, 0x4D41484D);
@@ -33,12 +33,13 @@ internal static class SensorBlobs
             Str(b, o + 260, entries[i].Units);
             F32(b, o + 1300, entries[i].Value);
             U32(b, o + 1316, entries[i].Gpu);
+            U32(b, o + 1320, entries[i].Src);
         }
         return b;
     }
 
-    public static (string, string, float, uint) M(string name, float value, string units = "", uint gpu = 0) =>
-        (name, units, value, gpu);
+    public static (string, string, float, uint, uint) M(string name, float value, string units = "", uint gpu = 0, uint src = 0) =>
+        (name, units, value, gpu, src);
 
     // ---- HWiNFO (HWiNFO_SENS_SM2) ----
 

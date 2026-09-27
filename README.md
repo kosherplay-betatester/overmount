@@ -22,7 +22,7 @@ It's one small tray app that installs in seconds with no admin rights, and it up
 
 | | |
 |---|---|
-| 🎮 **Game dashboard on the dock** | CPU/GPU temperature, load and watts with live graphs, RAM/VRAM, and **FPS + 1% low** when a game runs (measured by OverMount itself from RivaTuner frame times). |
+| 🎮 **Game dashboard on the dock** | CPU/GPU temperature, load and watts with live graphs, RAM/VRAM, and **FPS + 1% low** when a game runs (measured by OverMount itself from RivaTuner frame times). Pick what's big: temperature, load or watts. |
 | 🌈 **Lighting studio** | Stack up to 8 layers (effects on any keys or edge LEDs), **paint single keys** in any colour, and start from 32 premade scenes. Up to 30 fps. |
 | 🎵 **Reactive lighting** | Audio spectrum and audio pulse (from whatever your PC plays), screen sync (Ambilight), typing ripples and heatmaps, and CPU-temperature colours. |
 | 🧠 **Smart overlays** | Caps/Num/Scroll lock glow, a volume bar on F1–F12, a red mic-mute key, a shortcut helper while you hold Ctrl/Alt/Win, and focus-timer progress. Lights fade out when you lock the PC. |
@@ -81,10 +81,13 @@ The Dark Mount's 320×240 media dock becomes a second screen:
 > Coming from IO Center? Open **Profiles → Import from IO Center…**. Your profiles are found automatically (exported `.ioprofile` files work too).
 
 ### Recommended companions
-- **MSI Afterburner**: CPU/GPU temperatures, power, load, RAM/VRAM and FPS for the dashboard.
+OverMount already reads **CPU load, GPU temperature, GPU load, VRAM and RAM from Windows itself** (and GPU watts on NVIDIA cards), so the dashboard works right away. These free apps add the rest, and **OverMount can set them up for you**. On first start (or via **Home → Setup check → Set up**, or the tray menu's **Set up sensor apps…**) it shows what's missing and, only after you click **Set up**, installs them with winget, makes Afterburner start with Windows and starts them:
+- **MSI Afterburner**: **CPU temperature and CPU watts** (Windows can't read those without a driver), GPU watts on AMD/Intel, and more sensors.
 - **RivaTuner Statistics Server** (installed with Afterburner): detects the running game. OverMount measures **1% lows** from its frame times, with no extra setup.
 - **HWiNFO** (optional): enable *Shared Memory Support* for more precise sensors.
 - For Studio lighting, Windows **Dynamic Lighting** must be off for the keyboard. The Home page checks this and opens the right settings page.
+
+<p align="center"><img src="docs/images/sensor-apps.png" alt="OverMount sets up the sensor apps for you" width="520"></p>
 
 ---
 
@@ -141,7 +144,7 @@ A profile stores the keyboard's lighting, bindings and Game Mode locks (optional
 
 <img src="docs/images/app-dock-screen.png" width="85%">
 
-Choose the screen mode, default screen, smart screens and rotation. The **focus timer** (Pomodoro) defaults to 25 min focus, 5 min breaks and a long break every 4th. Start or pause it with **Ctrl+Alt+Shift+F** or from the tray menu. The dock counts down and F1–F12 fill up like a progress bar.
+Choose the screen mode, default screen, smart screens and rotation. **Stats screen layout** picks the big number for the CPU and GPU rows (temperature, load or watts; the other two are shown small) and which lines the graphs draw. The **focus timer** (Pomodoro) defaults to 25 min focus, 5 min breaks and a long break every 4th. Start or pause it with **Ctrl+Alt+Shift+F** or from the tray menu. The dock counts down and F1–F12 fill up like a progress bar.
 </details>
 
 <details>
@@ -164,7 +167,9 @@ OverMount checks GitHub for a new release once a day (you can turn this off). **
 
 **Studio lighting doesn't show.** Turn off Windows *Dynamic Lighting* for the keyboard (Settings → Personalization → Dynamic Lighting). The Home page checks this for you.
 
-**No FPS or 1% low in a game.** RivaTuner Statistics Server must be running (it comes with MSI Afterburner). OverMount measures the 1% low itself from RivaTuner's frame times.
+**Some stats show `--`.** CPU temperature and CPU watts need MSI Afterburner (or HWiNFO) running, because Windows can't read them without a driver; the dock says "needs Afterburner" when that's missing. Everything else comes from Windows itself. Tray icon → **Set up sensor apps…** installs and starts what's missing.
+
+**No FPS or 1% low in a game.** RivaTuner Statistics Server must be running (MSI Afterburner starts it). OverMount measures the 1% low itself from RivaTuner's frame times. **Set up sensor apps…** in the tray menu takes care of it.
 
 **Light Mount?** Supported with everything except the dock and display-key features, which the Light Mount doesn't have. It's built from the same protocol but hasn't been tested on a real Light Mount yet, so feedback is welcome.
 

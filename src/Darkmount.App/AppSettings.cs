@@ -35,6 +35,9 @@ public sealed class AppSettings
     /// <summary>Screen shown in Auto mode when no game runs.</summary>
     public ScreenKind DefaultScreen { get; set; } = ScreenKind.Stats;
 
+    /// <summary>Stats screen: which CPU/GPU value is big and what the graphs draw.</summary>
+    public StatsLayout StatsLayout { get; set; } = new();
+
     /// <summary>In Auto mode without a game, take turns showing <see cref="Rotation"/> instead of the default screen.</summary>
     public bool RotateScreens { get; set; }
     public List<ScreenKind> Rotation { get; set; } = [ScreenKind.Stats, ScreenKind.NowPlaying, ScreenKind.Clock, ScreenKind.Network];
@@ -88,6 +91,9 @@ public sealed class AppSettings
 
     /// <summary>A release the user chose to skip ("1.2.0"), so it isn't offered again.</summary>
     public string? SkippedUpdate { get; set; }
+
+    /// <summary>The sensor-apps assistant was offered once on its own (it stays reachable from Home and the tray).</summary>
+    public bool CompanionsOffered { get; set; }
 }
 
 public static class SettingsStore

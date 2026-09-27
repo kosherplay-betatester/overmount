@@ -3,19 +3,43 @@ using System.Text.RegularExpressions;
 
 namespace Darkmount.Sensors;
 
-/// <summary>One MSI Afterburner monitoring entry. <see cref="Value"/> is null when Afterburner has no data.</summary>
-public sealed record MahmEntry(string Name, string Units, double? Value, uint Gpu);
+/// <summary>
+/// One MSI Afterburner monitoring entry. <see cref="Value"/> is null when Afterburner has no data. <see cref="Gpu"/> is the
+/// 0-based GPU the source belongs to and <see cref="SrcId"/> Afterburner's language-independent source id
+/// (<see cref="MahmSource"/>; <see cref="MahmSource.Unknown"/> in layouts without it).
+/// </summary>
+public sealed record MahmEntry(string Name, string Units, double? Value, uint Gpu, uint SrcId = MahmSource.Unknown);
+
+/// <summary>
+/// Afterburner's fixed source ids (MAHMSharedMemory.h). Names differ with the GPU count and language — e.g. a single
+/// GPU's board power is just "Power" and its VRAM "Memory usage" — so GPU values are matched by id first.
+/// </summary>
+public static class MahmSource
+{
+    public const uint GpuTemperature = 0x00, GpuUsage = 0x30, GpuMemoryUsage = 0x31, GpuPower = 0x61;
+    public const uint Unknown = 0xFFFFFFFF;
+
+    /// <summary>Ids below this belong to a GPU (temperatures, clocks, usages, voltages, frame rates, power).</summary>
+    public const uint FirstNonGpu = 0x80;
+}
 
 /// <summary>Parsed content of Afterburner's "MAHMSharedMemory".</summary>
 public sealed partial class MahmData
 {
     private readonly Dictionary<string, MahmEntry> _byName = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// True when the entries carry real source ids. A layout without ids (or a writer that leaves them zero) would make
+    /// every entry look like GPU temperature (id 0), so ids count only when at least one is non-zero.
+    /// </summary>
+    private readonly bool _hasSourceIds;
+
     public MahmData(IReadOnlyList<MahmEntry> entries)
     {
         Entries = entries;
         foreach (var e in entries)
             _byName.TryAdd(e.Name, e);
+        _hasSourceIds = entries.Any(e => e.SrcId is not 0 and not MahmSource.Unknown);
     }
 
     public IReadOnlyList<MahmEntry> Entries { get; }
@@ -39,6 +63,20 @@ public sealed partial class MahmData
     public int SelectGpu(int gpuIndex)
     {
         if (gpuIndex > 0) return gpuIndex;
+
+        if (_hasSourceIds)
+        {
+            // By id: the GPU drawing the most power, else the last one with a temperature, else the first GPU seen.
+            var gpuEntries = Entries.Where(e => e.SrcId < MahmSource.FirstNonGpu).ToList();
+            if (gpuEntries.Count > 0)
+            {
+                var powered = gpuEntries.Where(e => e.SrcId == MahmSource.GpuPower && e.Value is not null).ToList();
+                if (powered.Count > 0) return (int)powered.MaxBy(e => e.Value!.Value)!.Gpu + 1;
+                var hot = gpuEntries.Where(e => e.SrcId == MahmSource.GpuTemperature && e.Value is not null).ToList();
+                if (hot.Count > 0) return (int)hot.Max(e => e.Gpu) + 1;
+                return (int)gpuEntries.Min(e => e.Gpu) + 1;
+            }
+        }
 
         var gpus = Entries
             .Select(e => (Parsed: ParseGpuName(e.Name), e.Value))
@@ -69,19 +107,21 @@ public sealed partial class MahmData
             CpuLoad = Value("CPU usage"),
             CpuPower = Value("CPU power"),
             RamUsedMb = Value("RAM usage"),
-            GpuTemp = GpuValue(gpu, "temperature"),
-            GpuLoad = GpuValue(gpu, "usage"),
-            GpuPower = GpuValue(gpu, "power"),
-            VramUsedMb = GpuValue(gpu, "memory usage"),
+            GpuTemp = GpuValue(gpu, MahmSource.GpuTemperature, "temperature"),
+            GpuLoad = GpuValue(gpu, MahmSource.GpuUsage, "usage"),
+            GpuPower = GpuValue(gpu, MahmSource.GpuPower, "power"),
+            VramUsedMb = GpuValue(gpu, MahmSource.GpuMemoryUsage, "memory usage"),
             Fps = Value("Framerate"),
             FpsLow = one ?? pointOne, // 1 % low is the number players compare; 0.1 % only when it's all Afterburner offers
             FpsLowLabel = one is not null || pointOne is null ? "1% low" : "0.1% low",
         };
     }
 
-    private double? GpuValue(int gpu, string metric)
+    /// <summary>A GPU value by source id (1-based <paramref name="gpu"/>), falling back to the "GPU{n} metric" names.</summary>
+    private double? GpuValue(int gpu, uint srcId, string metric)
     {
         if (gpu <= 0) return null;
+        if (_hasSourceIds && Entries.FirstOrDefault(e => e.SrcId == srcId && e.Gpu == gpu - 1) is { Value: { } byId }) return byId;
         return Value($"GPU{gpu} {metric}") ?? (gpu == 1 ? Value($"GPU {metric}") : null);
     }
 
@@ -107,6 +147,7 @@ public static class MahmReader
     private const int UnitsOffset = 260, UnitsLength = 260;
     private const int DataOffset = 1300;
     private const int GpuOffset = 1316;
+    private const int SrcIdOffset = 1320;
 
     /// <summary>Parses the blob, or returns null when it is not a valid MAHM block.</summary>
     public static MahmData? Parse(byte[] blob)
@@ -136,7 +177,10 @@ public static class MahmReader
                 uint gpu = entrySize >= GpuOffset + 4
                     ? BinaryPrimitives.ReadUInt32LittleEndian(span[(off + GpuOffset)..])
                     : 0;
-                entries.Add(new MahmEntry(name, units, value, gpu));
+                uint srcId = entrySize >= SrcIdOffset + 4
+                    ? BinaryPrimitives.ReadUInt32LittleEndian(span[(off + SrcIdOffset)..])
+                    : MahmSource.Unknown;
+                entries.Add(new MahmEntry(name, units, value, gpu, srcId));
             }
             return new MahmData(entries);
         }

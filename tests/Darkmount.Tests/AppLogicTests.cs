@@ -1,4 +1,5 @@
 using Darkmount.App;
+using Darkmount.Screens;
 using Darkmount.Sensors;
 
 namespace Darkmount.Tests;
@@ -166,6 +167,30 @@ public class AppLogicTests
     }
 
     // ---------------------------------------------------------------- Settings
+
+    [Fact]
+    public void Stats_layout_is_saved_and_old_settings_get_the_classic_layout()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"dmh-{Guid.NewGuid():N}.json");
+        try
+        {
+            SettingsStore.Save(path, new AppSettings
+            {
+                StatsLayout = new StatsLayout { Primary = StatsValue.Load, GraphLoad = true, GraphTemperature = false, GraphPower = true },
+            });
+            var loaded = SettingsStore.Load(path).StatsLayout;
+            Assert.Equal(StatsValue.Load, loaded.Primary);
+            Assert.False(loaded.GraphTemperature);
+            Assert.True(loaded.GraphPower);
+            Assert.Contains("\"Primary\": \"Load\"", File.ReadAllText(path)); // readable in settings.json
+
+            File.WriteAllText(path, """{ "Mode": "Auto" }""");
+            var classic = SettingsStore.Load(path).StatsLayout;
+            Assert.Equal(StatsValue.Temperature, classic.Primary);
+            Assert.True(classic.GraphLoad && classic.GraphTemperature && !classic.GraphPower);
+        }
+        finally { File.Delete(path); }
+    }
 
     [Fact]
     public void Settings_round_trip_through_json_and_default_when_missing()

@@ -99,6 +99,46 @@ public class SensorParsingTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Mahm_single_gpu_power_and_vram_are_found_by_source_id() // GitHub issue #1
+    {
+        // Afterburner on one GPU only prefixes some sources with "GPU": power and VRAM come as "Power" / "Memory usage".
+        var data = MahmReader.Parse(Mahm(
+            M("GPU temperature", 61, "°C", gpu: 0, src: MahmSource.GpuTemperature),
+            M("GPU usage", 97, "%", gpu: 0, src: MahmSource.GpuUsage),
+            M("Memory usage", 9216, "MB", gpu: 0, src: MahmSource.GpuMemoryUsage),
+            M("Power", 287.5f, "W", gpu: 0, src: MahmSource.GpuPower),
+            M("CPU temperature", 70, "°C", src: 0x80),
+            M("CPU usage", 35, "%", src: 0x90)))!;
+
+        var s = data.ToSnapshot(new SensorOptions());
+
+        Assert.Equal(61, s.GpuTemp);
+        Assert.Equal(97, s.GpuLoad);
+        Assert.Equal(287.5, s.GpuPower);
+        Assert.Equal(9216, s.VramUsedMb);
+        Assert.Equal(70, s.CpuTemp);
+    }
+
+    [Fact]
+    public void Mahm_source_ids_pick_the_gpu_drawing_the_most_power()
+    {
+        var data = MahmReader.Parse(Mahm(
+            M("GPU1 temperature", 45, gpu: 0, src: MahmSource.GpuTemperature),
+            M("GPU1 power", 12, gpu: 0, src: MahmSource.GpuPower),
+            M("GPU2 temperature", 66, gpu: 1, src: MahmSource.GpuTemperature),
+            M("GPU2 power", 250, gpu: 1, src: MahmSource.GpuPower),
+            M("GPU2 memory usage", 8000, gpu: 1, src: MahmSource.GpuMemoryUsage)))!;
+
+        var s = data.ToSnapshot(new SensorOptions());
+
+        Assert.Equal(2, data.SelectGpu(0));
+        Assert.Equal(66, s.GpuTemp);
+        Assert.Equal(250, s.GpuPower);
+        Assert.Equal(8000, s.VramUsedMb);
+        Assert.Equal(45, data.ToSnapshot(new SensorOptions { GpuIndex = 1 }).GpuTemp);
+    }
+
+    [Fact]
     public void Mahm_OnePercentLow_PreferredOverPointOnePercent()
     {
         var data = MahmReader.Parse(Mahm(

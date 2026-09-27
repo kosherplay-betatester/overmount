@@ -28,6 +28,8 @@ public sealed class SettingsForm : Form
         CheckOnClick = true, Width = 260, Height = 150, Font = Ui.Body, BackColor = Ui.Panel, ForeColor = Ui.Text, BorderStyle = BorderStyle.None,
         FormattingEnabled = true,
     };
+    readonly ComboBox _statsPrimary = Ui.Combo<StatsValue>(200);
+    readonly CheckBox _graphLoad = Ui.Check("Load"), _graphTemp = Ui.Check("Temperature"), _graphPower = Ui.Check("Watts");
     readonly NumericUpDown _rotateSeconds = Ui.Number(5, 600, 5), _focusMin = Ui.Number(1, 180), _breakMin = Ui.Number(1, 60),
         _longBreakMin = Ui.Number(1, 120);
     readonly CheckBox _autostart = Ui.Check("Start OverMount with Windows");
@@ -211,6 +213,12 @@ public sealed class SettingsForm : Form
         p.Row("Refresh every", _refresh, "seconds (minimum ~5 s: each image takes ~2.2 s plus a 3 s rest for the dock)");
         p.Row("Switch-screen hotkey", _hotkey);
         p.Row("", _autostart);
+        p.Heading("Stats screen layout");
+        p.AddFull(Ui.Note("Choose the CPU/GPU value shown big (the other two are shown small underneath) and what the graphs draw.", 640));
+        p.Row("Big number", _statsPrimary);
+        var graphs = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
+        foreach (var c in new[] { _graphLoad, _graphTemp, _graphPower }) { c.Margin = new Padding(0, 4, 18, 0); graphs.Controls.Add(c); }
+        p.Row("Graph shows", graphs);
         p.Heading("Focus timer");
         p.AddFull(Ui.Note("A Pomodoro timer for deep work: the dock shows the countdown and the F-keys fill up like a progress " +
                           "bar (Lighting → Studio → live extras). Start or pause it from the tray menu or with the hotkey.", 640));
@@ -304,6 +312,9 @@ public sealed class SettingsForm : Form
         _breakMin.Value = Ui.Clamp(_breakMin, _edit.BreakMinutes);
         _longBreakMin.Value = Ui.Clamp(_longBreakMin, _edit.LongBreakMinutes);
         _focusHotkey.Text = _edit.FocusHotkey;
+        var layout = _edit.StatsLayout ?? new();
+        _statsPrimary.SelectedItem = layout.Primary;
+        (_graphLoad.Checked, _graphTemp.Checked, _graphPower.Checked) = (layout.GraphLoad, layout.GraphTemperature, layout.GraphPower);
         _animKind.SelectedItem = _edit.AnimationKind;
         _animPath.Text = _edit.AnimationPath ?? "";
 
@@ -328,6 +339,7 @@ public sealed class SettingsForm : Form
         nameof(AppSettings.Rotation), nameof(AppSettings.RotateSeconds), nameof(AppSettings.FocusMinutes),
         nameof(AppSettings.BreakMinutes), nameof(AppSettings.LongBreakMinutes), nameof(AppSettings.FocusHotkey),
         nameof(AppSettings.AnimationKind), nameof(AppSettings.AnimationPath), nameof(AppSettings.Alerts), nameof(AppSettings.Sensors),
+        nameof(AppSettings.StatsLayout),
     ];
 
     /// <summary><paramref name="basis"/> with the form-owned values taken from the controls; null if a value is invalid.</summary>
@@ -362,6 +374,11 @@ public sealed class SettingsForm : Form
         s.BreakMinutes = (int)_breakMin.Value;
         s.LongBreakMinutes = (int)_longBreakMin.Value;
         s.FocusHotkey = _focusHotkey.Text.Trim();
+        s.StatsLayout = new StatsLayout
+        {
+            Primary = (StatsValue)(_statsPrimary.SelectedItem ?? StatsValue.Temperature),
+            GraphLoad = _graphLoad.Checked, GraphTemperature = _graphTemp.Checked, GraphPower = _graphPower.Checked,
+        };
         s.AnimationKind = (AnimationKind)_animKind.SelectedItem!;
         s.AnimationPath = string.IsNullOrWhiteSpace(_animPath.Text) ? null : _animPath.Text.Trim();
         s.Alerts = new AlertSettings

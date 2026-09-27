@@ -59,15 +59,17 @@ public sealed class RingSeries : IReadOnlyList<double?>
 /// <summary>Recent history of the graphed metrics (one sample per frame, default 60 samples ≈ 2 minutes).</summary>
 public sealed class MetricHistory
 {
-    private readonly RingSeries _cpuTemp, _cpuLoad, _gpuTemp, _gpuLoad, _fps, _fpsLow, _netDown, _netUp;
+    private readonly RingSeries _cpuTemp, _cpuLoad, _cpuPower, _gpuTemp, _gpuLoad, _gpuPower, _fps, _fpsLow, _netDown, _netUp;
 
     public MetricHistory(int capacity = 60)
     {
         Capacity = capacity;
         _cpuTemp = new(capacity);
         _cpuLoad = new(capacity);
+        _cpuPower = new(capacity);
         _gpuTemp = new(capacity);
         _gpuLoad = new(capacity);
+        _gpuPower = new(capacity);
         _fps = new(capacity);
         _fpsLow = new(capacity);
         _netDown = new(capacity);
@@ -80,6 +82,8 @@ public sealed class MetricHistory
     public IReadOnlyList<double?> CpuLoad => _cpuLoad;
     public IReadOnlyList<double?> GpuTemp => _gpuTemp;
     public IReadOnlyList<double?> GpuLoad => _gpuLoad;
+    public IReadOnlyList<double?> CpuPower => _cpuPower;
+    public IReadOnlyList<double?> GpuPower => _gpuPower;
     public IReadOnlyList<double?> Fps => _fps;
     public IReadOnlyList<double?> FpsLow => _fpsLow;
 
@@ -94,8 +98,10 @@ public sealed class MetricHistory
         ArgumentNullException.ThrowIfNull(s);
         _cpuTemp.Add(s.CpuTemp);
         _cpuLoad.Add(s.CpuLoad);
+        _cpuPower.Add(s.CpuPower);
         _gpuTemp.Add(s.GpuTemp);
         _gpuLoad.Add(s.GpuLoad);
+        _gpuPower.Add(s.GpuPower);
         _fps.Add(s.Fps);
         _fpsLow.Add(s.FpsLow);
     }
