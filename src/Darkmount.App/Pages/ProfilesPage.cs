@@ -178,8 +178,9 @@ public sealed class ProfilesPage : Ui.Page
         using var f = new Form
         {
             Text = "IO Center import", Width = 760, Height = 520, StartPosition = FormStartPosition.CenterParent, BackColor = Ui.Back,
-            ForeColor = Ui.Text, Font = Ui.Body, MinimizeBox = false, MaximizeBox = false, AutoScaleMode = AutoScaleMode.Dpi,
+            ForeColor = Ui.Text, Font = Ui.Body, MinimizeBox = false, MaximizeBox = false,
         };
+        Ui.BeginLayout(f);
         var box = new TextBox
         {
             Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Text = text,
@@ -191,6 +192,7 @@ public sealed class ProfilesPage : Ui.Page
         f.Controls.Add(box);
         f.Controls.Add(bar);
         f.AcceptButton = ok;
+        Ui.EndLayout(f);
         f.ShowDialog(FindForm());
     }
 
@@ -239,21 +241,7 @@ public sealed class ProfilesPage : Ui.Page
     static Profile Clone(Profile p) =>
         System.Text.Json.JsonSerializer.Deserialize<Profile>(System.Text.Json.JsonSerializer.Serialize(p))!;
 
-    string? Prompt(string label, string initial)
-    {
-        using var f = new Form
-        {
-            Text = "OverMount", Width = 460, Height = 170, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
-            MaximizeBox = false, MinimizeBox = false, BackColor = Ui.Back, ForeColor = Ui.Text, Font = Ui.Body,
-        };
-        var box = new TextBox { Text = initial, Left = 16, Top = 40, Width = 410 };
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 250, Top = 80, Width = 80 };
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 346, Top = 80, Width = 80 };
-        f.Controls.AddRange([new Label { Text = label, Left = 16, Top = 14, AutoSize = true }, box, ok, cancel]);
-        f.AcceptButton = ok;
-        f.CancelButton = cancel;
-        return f.ShowDialog(FindForm()) == DialogResult.OK ? box.Text : null;
-    }
+    string? Prompt(string label, string initial) => Ui.Prompt(FindForm(), "OverMount", label, initial);
 
     static string Friendly(Exception e) => e is KeyboardUnavailableException ? e.Message : $"Something went wrong: {e.Message}";
 }

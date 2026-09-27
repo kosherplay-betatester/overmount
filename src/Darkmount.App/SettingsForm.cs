@@ -65,9 +65,8 @@ public sealed class SettingsForm : Form
         _current = liveSettings;
         _edit = Clone(current);
 
-        // Everything below is laid out in 96-DPI units; WinForms scales it to the monitor (e.g. 200 % on 4K).
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
+        // Everything below is laid out in 96-DPI units and scaled to the monitor (175 % on a typical 4K screen) at the end.
+        Ui.BeginLayout(this);
         Text = "OverMount";
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(1140, 720);
@@ -133,6 +132,7 @@ public sealed class SettingsForm : Form
         LoadValues();
         Activated += (_, _) => RefreshFromLive();
         Select(0);
+        Ui.EndLayout(this); // every page is part of the window by now, so all of them are scaled
     }
 
     // ---------------------------------------------------------------- navigation
@@ -150,8 +150,11 @@ public sealed class SettingsForm : Form
         button.FlatAppearance.MouseOverBackColor = Ui.PanelHover;
         int index = _pages.Count;
         button.Click += (_, _) => Select(index);
-        _nav.Controls.Add(button);
+        Ui.Add(_nav, button);
         _pages.Add((button, page));
+        // Every page stays in the window (hidden until chosen), so the window's scaling reaches all of them.
+        page.Visible = false;
+        Ui.Add(_content, page);
     }
 
     /// <summary>Shows the page with this sidebar title (used by the Home page's quick actions).</summary>
@@ -161,18 +164,19 @@ public sealed class SettingsForm : Form
         if (i >= 0) Select(i);
     }
 
-    /// <remarks>
-    /// Pages load their data when they become visible. A control added to the window for the first time doesn't raise
-    /// VisibleChanged, so pages are hidden before they're added and shown after: every page gets a "shown" event.
-    /// </remarks>
+    /// <remarks>Pages load their data when they become visible (VisibleChanged), so switching only toggles Visible.</remarks>
     void Select(int index)
     {
-        foreach (Control old in _content.Controls) old.Visible = false;
-        _content.Controls.Clear();
         var page = _pages[index].Page;
-        page.Visible = false;
-        _content.Controls.Add(page);
-        page.Visible = true;
+        _content.SuspendLayout();
+        try
+        {
+            foreach (var (_, other) in _pages)
+                if (other != page) other.Visible = false;
+            _content.AutoScrollPosition = Point.Empty;
+            page.Visible = true;
+        }
+        finally { _content.ResumeLayout(true); } // a page's show/hide handler failing must not freeze the window's layout
         for (int i = 0; i < _pages.Count; i++)
         {
             _pages[i].Button.BackColor = i == index ? Ui.PanelHover : Ui.Panel;

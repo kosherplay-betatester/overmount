@@ -26,10 +26,9 @@ public sealed class CompanionsDialog : Form
     CompanionsDialog(IReadOnlyList<CompanionStatus> status, bool autostartOn, bool winget)
     {
         _winget = winget;
+        Ui.BeginLayout(this);
         Text = "OverMount — sensor apps";
         Icon = AppIcon.Window;
-        AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScaleDimensions = new SizeF(96, 96);
         ClientSize = new Size(660, 540);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
@@ -84,6 +83,7 @@ public sealed class CompanionsDialog : Form
         Controls.Add(body);
         Controls.Add(buttons);
         ShowStatus(status, autostartOn, initial: true);
+        Ui.EndLayout(this);
         FormClosing += (_, e) => { if (_busy && e.CloseReason is CloseReason.UserClosing or CloseReason.FormOwnerClosing) e.Cancel = true; };
         FormClosed += (_, _) => { if (_open == this) _open = null; };
         HandleCreated += (_, _) => Ui.UseDarkTitleBar(this);

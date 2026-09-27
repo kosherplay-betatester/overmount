@@ -27,7 +27,9 @@ public static class Ui
             Padding = new Padding(24, 18, 24, 18);
             BackColor = Back;
             ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
-            ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            // AutoSize, not Percent: when WinForms scales an auto-sized table to the screen, controls in a Percent column
+            // collapse to zero width (text boxes and drop-downs simply vanish at 125 %+ Windows scaling).
+            ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             AddFull(new Label { Text = title, Font = Title, ForeColor = Ui.Text, AutoSize = true, Margin = new Padding(0, 0, 0, 4), UseMnemonic = false });
             if (description is not null) AddFull(Note(description, 620));
             AddFull(new Label { Height = 8, AutoSize = false });
@@ -104,7 +106,7 @@ public static class Ui
     {
         var b = new Button
         {
-            UseMnemonic = false,
+            UseMnemonic = false, AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Text = text, AutoSize = true, MinimumSize = new Size(100, 34), Font = Body, FlatStyle = FlatStyle.Flat,
             BackColor = primary ? Accent : Panel, ForeColor = primary ? Color.Black : Text, Cursor = Cursors.Hand,
         };
@@ -114,6 +116,96 @@ public static class Ui
     }
 
     public static decimal Clamp(NumericUpDown n, double v) => Math.Clamp((decimal)v, n.Minimum, n.Maximum);
+
+    /// <summary>
+    /// Starts building a window laid out in 96-DPI units. Layout stays suspended until <see cref="EndLayout"/>, which
+    /// scales everything to the screen (175 % on a typical 4K monitor) in one go. Switching scaling on before the
+    /// controls exist would scale only the empty window and leave every control at 100 % next to full-size text.
+    /// </summary>
+    public static void BeginLayout(Form form)
+    {
+        form.SuspendLayout();
+        form.AutoScaleDimensions = new SizeF(96F, 96F);
+        form.AutoScaleMode = AutoScaleMode.Dpi;
+    }
+
+    /// <summary>
+    /// Ends <see cref="BeginLayout"/>: scales the finished window to the screen and lays it out. A window that would be
+    /// bigger than the screen (small laptop screen at high scaling) is shrunk to fit when it opens.
+    /// </summary>
+    public static void EndLayout(Form form)
+    {
+        form.ResumeLayout(false);
+        form.PerformLayout();
+        MarkScaled(form);
+        form.Load += (_, _) =>
+        {
+            if (form.WindowState != FormWindowState.Normal) return;
+            var area = Screen.FromControl(form).WorkingArea;
+            if (form.Width <= area.Width && form.Height <= area.Height) return;
+            form.Size = new Size(Math.Min(form.Width, area.Width), Math.Min(form.Height, area.Height));
+            form.Location = new Point(area.Left + (area.Width - form.Width) / 2, area.Top + (area.Height - form.Height) / 2);
+        };
+    }
+
+    /// <summary>Asks for one line of text; null when cancelled. Sizes itself to its text at any Windows scaling.</summary>
+    public static string? Prompt(IWin32Window? owner, string title, string label, string initial = "")
+    {
+        using var f = new Form
+        {
+            Text = title, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
+            MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, BackColor = Back, ForeColor = Ui.Text, Font = Body,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        BeginLayout(f);
+        var layout = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, Padding = new Padding(16, 14, 16, 12) };
+        var box = new TextBox { Text = initial, Width = 420, Font = Body, Margin = new Padding(0, 6, 0, 14) };
+        var ok = Button("OK", primary: true);
+        ok.DialogResult = DialogResult.OK;
+        var cancel = Button("Cancel");
+        cancel.DialogResult = DialogResult.Cancel;
+        var buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.RightToLeft, Anchor = AnchorStyles.Right, Margin = new Padding(0) };
+        buttons.Controls.AddRange([cancel, ok]);
+        layout.Controls.Add(new Label { Text = label, AutoSize = true, MaximumSize = new Size(420, 0), ForeColor = Ui.Text, Font = Body, UseMnemonic = false, Margin = new Padding(0) });
+        layout.Controls.Add(box);
+        layout.Controls.Add(buttons);
+        f.Controls.Add(layout);
+        f.AcceptButton = ok;
+        f.CancelButton = cancel;
+        EndLayout(f);
+        return f.ShowDialog(owner) == DialogResult.OK ? box.Text : null;
+    }
+
+    /// <summary>Controls already scaled to the screen (by their window's <see cref="EndLayout"/> or by <see cref="Add"/>).</summary>
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Control, object> Scaled = new();
+
+    static void MarkScaled(Control c)
+    {
+        Scaled.AddOrUpdate(c, Scaled);
+        foreach (Control child in c.Controls) MarkScaled(child);
+    }
+
+    /// <summary>
+    /// Adds a control to a window that is already on screen. WinForms scales a window's controls only once, when it's
+    /// built, so a control created (or first shown) later is still in 96-DPI units: it's scaled here first. Controls
+    /// that were part of the window when it was scaled are added as they are.
+    /// </summary>
+    public static void Add(Control parent, Control child)
+    {
+        if (!Scaled.TryGetValue(child, out _) && parent.FindForm() is { } form && Scaled.TryGetValue(form, out _))
+        {
+            float factor = parent.DeviceDpi / 96f;
+            if (Math.Abs(factor - 1) > 0.001f) child.Scale(new SizeF(factor, factor));
+            MarkScaled(child);
+        }
+        parent.Controls.Add(child);
+    }
+
+    /// <inheritdoc cref="Add"/>
+    public static void AddRange(Control parent, params Control[] children)
+    {
+        foreach (var child in children) Add(parent, child);
+    }
 
     /// <summary>Asks Windows 10/11 for a dark title bar.</summary>
     public static void UseDarkTitleBar(Form form)

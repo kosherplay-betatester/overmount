@@ -39,6 +39,7 @@ public static class UpdateDialog
         f.Controls.Add(notesHost);
         f.Controls.Add(bar);
         f.Controls.Add(head);
+        Ui.EndLayout(f);
         f.ShowDialog(owner);
         return choice;
     }
@@ -54,6 +55,7 @@ public static class UpdateDialog
         cancel.Location = new Point(338, 86);
         f.Controls.AddRange([label, bar, cancel]);
         f.FormClosing += (_, _) => cts.Cancel();
+        Ui.EndLayout(f);
         f.Show(owner);
         try
         {
@@ -74,10 +76,20 @@ public static class UpdateDialog
         }
     }
 
-    static Form NewForm(string title, int w, int h) => new()
+    /// <summary>A dialog in 96-DPI units; call <see cref="Ui.EndLayout"/> once its controls are added.</summary>
+    static Form NewForm(string title, int w, int h)
     {
-        Text = title, ClientSize = new Size(w, h), StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog,
-        MaximizeBox = false, MinimizeBox = false, BackColor = Ui.Back, ForeColor = Ui.Text, Font = Ui.Body, AutoScaleMode = AutoScaleMode.Dpi,
-        AutoScaleDimensions = new SizeF(96, 96), Icon = AppIcon.Window,
-    };
+        var f = new Form();
+        Ui.BeginLayout(f);
+        f.Text = title;
+        f.ClientSize = new Size(w, h);
+        f.StartPosition = FormStartPosition.CenterScreen;
+        f.FormBorderStyle = FormBorderStyle.FixedDialog;
+        f.MaximizeBox = f.MinimizeBox = false;
+        f.BackColor = Ui.Back;
+        f.ForeColor = Ui.Text;
+        f.Font = Ui.Body;
+        f.Icon = AppIcon.Window;
+        return f;
+    }
 }

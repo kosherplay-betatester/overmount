@@ -285,21 +285,7 @@ public sealed class MacrosPage : Ui.Page
 
     static Label Hint(string text) => new() { Text = text, AutoSize = true, ForeColor = Ui.Dim, Margin = new Padding(6, 9, 6, 0) };
 
-    string? Prompt(string label, string initial = "")
-    {
-        using var f = new Form
-        {
-            Text = "OverMount", Width = 460, Height = 170, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
-            MaximizeBox = false, MinimizeBox = false, BackColor = Ui.Back, ForeColor = Ui.Text, Font = Ui.Body,
-        };
-        var box = new TextBox { Text = initial, Left = 16, Top = 40, Width = 410 };
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 250, Top = 80, Width = 80 };
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 346, Top = 80, Width = 80 };
-        f.Controls.AddRange([new Label { Text = label, Left = 16, Top = 14, AutoSize = true }, box, ok, cancel]);
-        f.AcceptButton = ok;
-        f.CancelButton = cancel;
-        return f.ShowDialog(FindForm()) == DialogResult.OK ? box.Text : null;
-    }
+    string? Prompt(string label, string initial = "") => Ui.Prompt(FindForm(), "OverMount", label, initial);
 
     sealed record KeyItem(byte Id, string Name) { public override string ToString() => Name; }
 
@@ -319,6 +305,7 @@ sealed class KeyCaptureDialog : Form
 
     KeyCaptureDialog()
     {
+        Ui.BeginLayout(this);
         Text = "Press a key or shortcut";
         Width = 420;
         Height = 150;
@@ -331,6 +318,7 @@ sealed class KeyCaptureDialog : Form
         {
             Text = "Press the key or combination (e.g. Ctrl+Shift+S).\nEsc cancels.", AutoSize = true, Left = 18, Top = 20, Font = Ui.Body,
         });
+        Ui.EndLayout(this);
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)

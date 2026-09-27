@@ -16,10 +16,9 @@ public sealed class SetupForm : Form
 
     SetupForm()
     {
+        Ui.BeginLayout(this);
         Text = "OverMount Setup";
         Icon = AppIcon.Window;
-        AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScaleDimensions = new SizeF(96, 96);
         ClientSize = new Size(600, 470);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
@@ -66,6 +65,7 @@ public sealed class SetupForm : Form
 
         Controls.Add(body);
         Controls.Add(buttons);
+        Ui.EndLayout(this);
     }
 
     static CheckBox Check(string text) => new() { Text = text, AutoSize = true, ForeColor = Ui.Text, Font = Ui.Body, Margin = new Padding(0, 4, 0, 4) };

@@ -153,7 +153,7 @@ public sealed class LightingPage : Ui.Page
     void SetColors(IReadOnlyList<GradientStop> stops)
     {
         _colors.Controls.Clear();
-        foreach (var s in stops) _colors.Controls.Add(Swatch(s.Color));
+        foreach (var s in stops) Ui.Add(_colors, Swatch(s.Color));
         UpdateColorButtons();
         _preview.Invalidate();
     }
@@ -169,7 +169,7 @@ public sealed class LightingPage : Ui.Page
     {
         if (_colors.Controls.Count >= LightingEffects.MaxGradientStops) return;
         var last = ((ColorButton)_colors.Controls[^1]).Value;
-        _colors.Controls.Add(Swatch(new Rgb(last.R, last.G, last.B)));
+        Ui.Add(_colors, Swatch(new Rgb(last.R, last.G, last.B)));
         UpdateColorButtons();
         Changed();
     }

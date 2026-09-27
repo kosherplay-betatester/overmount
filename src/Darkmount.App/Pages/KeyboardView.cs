@@ -102,7 +102,7 @@ public sealed class KeyboardView : Control
     void Relayout()
     {
         if (_bounds.Width <= 0 || Width <= 0) return;
-        float pad = Chassis ? Math.Max(18, Height * 0.07f) : 8;
+        float pad = Chassis ? Math.Max(LogicalToDeviceUnits(18), Height * 0.07f) : LogicalToDeviceUnits(8);
         _scale = Math.Min((Width - 2 * pad) / _bounds.Width, (Height - 2 * pad) / _bounds.Height);
         _offset = new PointF(pad + (Width - 2 * pad - _bounds.Width * _scale) / 2 - _bounds.X * _scale,
                              pad + (Height - 2 * pad - _bounds.Height * _scale) / 2 - _bounds.Y * _scale);
@@ -230,7 +230,7 @@ public sealed class KeyboardView : Control
     void PaintChassis(Graphics g)
     {
         var keys = ToScreen(_bounds);
-        float margin = Math.Max(10, _scale * 0.35f);
+        float margin = Math.Max(LogicalToDeviceUnits(10), _scale * 0.35f);
         var plate = RectangleF.Inflate(keys, margin, margin);
         var glow = new RectangleF(plate.X + plate.Width * 0.02f, plate.Bottom - 2, plate.Width * 0.96f, Math.Max(6, margin * 0.8f));
         using (var rainbow = new LinearGradientBrush(glow, Color.Red, Color.Blue, LinearGradientMode.Horizontal)

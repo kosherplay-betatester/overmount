@@ -14,11 +14,10 @@ public sealed class IoCenterImportDialog : Form
 
     IoCenterImportDialog()
     {
+        Ui.BeginLayout(this);
         Text = "Import from IO Center";
         Icon = AppIcon.Window;
         StartPosition = FormStartPosition.CenterParent;
-        AutoScaleMode = AutoScaleMode.Dpi;
-        AutoScaleDimensions = new SizeF(96, 96);
         ClientSize = new Size(620, 440);
         MinimizeBox = MaximizeBox = false;
         BackColor = Ui.Back;
@@ -54,6 +53,7 @@ public sealed class IoCenterImportDialog : Form
         Controls.Add(listHost);
         Controls.Add(buttons);
         Controls.Add(intro);
+        Ui.EndLayout(this);
     }
 
     void Browse()

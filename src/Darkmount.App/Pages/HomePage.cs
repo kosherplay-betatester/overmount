@@ -19,7 +19,7 @@ public sealed class HomePage : Ui.Page
     readonly Label _keyboard = Card(), _dock = Card(), _lighting = Card(), _profile = Card(), _macros = Card();
     readonly TableLayoutPanel _checks = new() { AutoSize = true, ColumnCount = 3, Margin = new Padding(0, 4, 0, 4) };
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
-    string _lastChecks = "";
+    string _lastChecks = "", _lastError = "";
 
     /// <param name="hasDock">False on Light Mount keyboards: the dock tile, dock actions and dock tips are left out.</param>
     public HomePage(Func<HomeStatus> status, Action<ScreenMode> setMode, Action<string> openPage, Action togglePause, bool hasDock = true)
@@ -71,7 +71,12 @@ public sealed class HomePage : Ui.Page
     {
         HomeStatus s;
         try { s = _status(); }
-        catch (Exception e) when (e is InvalidOperationException or NullReferenceException) { return; }
+        catch (Exception e) // a status read failing must never break the page (it runs inside page switches)
+        {
+            if (e.Message != _lastError) Log.Write($"Home status failed: {e.Message}"); // refreshes every second: log once
+            _lastError = e.Message;
+            return;
+        }
         _keyboard.Text = s.Keyboard;
         _dock.Text = s.Dock;
         _lighting.Text = s.Lighting;
@@ -82,10 +87,12 @@ public sealed class HomePage : Ui.Page
         if (key == _lastChecks) return;
         _lastChecks = key;
         _checks.SuspendLayout();
+        var old = _checks.Controls.Cast<Control>().ToList();
         _checks.Controls.Clear();
+        foreach (var o in old) o.Dispose();
         foreach (var c in s.Checks)
         {
-            _checks.Controls.Add(new Label
+            Ui.Add(_checks, new Label
             {
                 Text = c.Ok ? "✔" : c.Optional ? "○" : "⚠", AutoSize = true, Font = new Font("Segoe UI Semibold", 12f),
                 ForeColor = c.Ok ? Color.FromArgb(76, 217, 100) : c.Optional ? Ui.Dim : Color.FromArgb(255, 176, 32), Margin = new Padding(0, 6, 0, 0),
@@ -93,8 +100,8 @@ public sealed class HomePage : Ui.Page
             var text = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 4, 12, 4) };
             text.Controls.Add(new Label { Text = c.Title, AutoSize = true, Font = Ui.Body, ForeColor = Ui.Text, Margin = new Padding(0) });
             text.Controls.Add(Ui.Note(c.Detail, 560));
-            _checks.Controls.Add(text);
-            _checks.Controls.Add(c.Fix is { } fix && !c.Ok ? Ui.Button(c.FixLabel ?? "Fix", (_, _) => fix()) : new Label { AutoSize = true });
+            Ui.Add(_checks, text);
+            Ui.Add(_checks, c.Fix is { } fix && !c.Ok ? Ui.Button(c.FixLabel ?? "Fix", (_, _) => fix()) : new Label { AutoSize = true });
         }
         _checks.ResumeLayout();
     }
@@ -103,9 +110,11 @@ public sealed class HomePage : Ui.Page
 
     static Panel Tile(string caption, Label value)
     {
+        // Grows taller when the text needs it (large Windows scaling makes the text bigger than the tile).
         var p = new FlowLayoutPanel
         {
-            FlowDirection = FlowDirection.TopDown, Size = new Size(250, 78), BackColor = Ui.Panel, Padding = new Padding(12, 10, 10, 8),
+            FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(250, 78), MaximumSize = new Size(250, 0), BackColor = Ui.Panel, Padding = new Padding(12, 10, 10, 8),
             Margin = new Padding(0, 0, 12, 12),
         };
         p.Controls.Add(new Label { Text = caption, AutoSize = true, ForeColor = Ui.Accent, Font = new Font("Segoe UI Semibold", 8.5f) });

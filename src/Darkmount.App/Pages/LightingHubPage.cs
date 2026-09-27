@@ -139,7 +139,7 @@ public sealed class LightingHubPage : Ui.Page
         {
             _host.SuspendLayout();
             _host.Controls.Clear();
-            if (page is not null) _host.Controls.Add(page);
+            if (page is not null) Ui.Add(_host, page);
             _host.ResumeLayout();
         }
         UpdateNow();

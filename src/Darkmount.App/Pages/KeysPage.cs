@@ -139,7 +139,9 @@ public sealed class KeysPage : Ui.Page
     void FitKeyboard()
     {
         if (Parent is null) return;
-        int width = Math.Max(640, Parent.ClientSize.Width - Padding.Horizontal - SystemInformation.VerticalScrollBarWidth - 8);
+        // Pixel numbers here are 96-DPI units, converted for the screen (the window's own scaling doesn't reach runtime code).
+        int width = Math.Max(LogicalToDeviceUnits(640),
+            Parent.ClientSize.Width - Padding.Horizontal - SystemInformation.VerticalScrollBarWidth - LogicalToDeviceUnits(8));
         _view.Size = new Size(width, (int)(width * 0.38));
     }
 
@@ -267,19 +269,19 @@ public sealed class KeysPage : Ui.Page
         _editor.Controls.Clear();
         switch (kind)
         {
-            case Kind.Default: _editor.Controls.Add(Hint("The key goes back to its normal function.")); break;
-            case Kind.Disabled: _editor.Controls.Add(Hint("The key does nothing (great for the Windows key in games).")); break;
-            case Kind.Key: _editor.Controls.AddRange([_ctrl, _shift, _alt, _win, _usage]); break;
-            case Kind.FKey: _editor.Controls.AddRange([_fkey, Hint("Triggers a macro from the Macros page.")]); break;
-            case Kind.Media: _editor.Controls.Add(_media); break;
+            case Kind.Default: Ui.Add(_editor, Hint("The key goes back to its normal function.")); break;
+            case Kind.Disabled: Ui.Add(_editor, Hint("The key does nothing (great for the Windows key in games).")); break;
+            case Kind.Key: Ui.AddRange(_editor, _ctrl, _shift, _alt, _win, _usage); break;
+            case Kind.FKey: Ui.AddRange(_editor, _fkey, Hint("Triggers a macro from the Macros page.")); break;
+            case Kind.Media: Ui.Add(_editor, _media); break;
             case Kind.Mouse:
-                _editor.Controls.AddRange([_mouse, _double, _hold, Hint("Auto-fire clicks/s (0 = off)"), _autoFire]);
+                Ui.AddRange(_editor, _mouse, _double, _hold, Hint("Auto-fire clicks/s (0 = off)"), _autoFire);
                 break;
-            case Kind.Scroll: _editor.Controls.Add(_scroll); break;
-            case Kind.WindowsShortcut: _editor.Controls.Add(_shortcut); break;
-            case Kind.Backlight: _editor.Controls.AddRange([_backlight, _effect]); _effect.Visible = Selected<BacklightAction>(_backlight) == BacklightAction.SelectEffect; break;
-            case Kind.Character: _editor.Controls.AddRange([_text, Hint("Type the character, e.g. € or ©.")]); break;
-            case Kind.Website: _editor.Controls.AddRange([_text, Hint("Full address, e.g. https://twitch.tv")]); break;
+            case Kind.Scroll: Ui.Add(_editor, _scroll); break;
+            case Kind.WindowsShortcut: Ui.Add(_editor, _shortcut); break;
+            case Kind.Backlight: Ui.AddRange(_editor, _backlight, _effect); _effect.Visible = Selected<BacklightAction>(_backlight) == BacklightAction.SelectEffect; break;
+            case Kind.Character: Ui.AddRange(_editor, _text, Hint("Type the character, e.g. € or ©.")); break;
+            case Kind.Website: Ui.AddRange(_editor, _text, Hint("Full address, e.g. https://twitch.tv")); break;
         }
         foreach (var c in new ComboBox[] { _usage, _fkey, _media, _mouse, _scroll, _shortcut, _backlight, _effect })
             if (c.SelectedIndex < 0 && c.Items.Count > 0) c.SelectedIndex = 0;

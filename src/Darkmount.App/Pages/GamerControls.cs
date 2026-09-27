@@ -86,7 +86,7 @@ public sealed class ToggleSwitch : CheckBox
         var g = e.Graphics;
         g.Clear(Parent?.BackColor ?? Ui.Back);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        float h = Math.Min(22, Height - 6), w = h * 1.9f, y = (Height - h) / 2;
+        float h = Math.Min(LogicalToDeviceUnits(22), Height - LogicalToDeviceUnits(6)), w = h * 1.9f, y = (Height - h) / 2;
         var track = new RectangleF(2, y, w, h);
         using var path = new GraphicsPath();
         path.AddArc(track.X, track.Y, h, h, 90, 180);

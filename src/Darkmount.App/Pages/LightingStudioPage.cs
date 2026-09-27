@@ -301,7 +301,7 @@ public sealed class LightingStudioPage : Ui.Page
         while (host is not null && host is not ScrollableControl { AutoScroll: true }) host = host.Parent;
         if (host is null || _view.Parent is null) return;
         int left = host.PointToClient(_view.Parent.PointToScreen(_view.Location)).X;
-        int width = Math.Max(900, host.ClientSize.Width - left - 28);
+        int width = Math.Max(LogicalToDeviceUnits(900), host.ClientSize.Width - left - LogicalToDeviceUnits(28)); // 96-DPI units
         if (Math.Abs(width - _view.Width) > 4) _view.Size = new Size(width, (int)(width * 0.37));
     }
 
@@ -520,7 +520,7 @@ public sealed class LightingStudioPage : Ui.Page
         {
             var b = new ColorButton { Value = ToColor(hex) };
             b.ValueChanged += _ => { l.Colors = _colors.Controls.OfType<ColorButton>().Select(x => Hex(x.Value)).ToList(); Commit(); };
-            _colors.Controls.Add(b);
+            Ui.Add(_colors, b);
         }
     }
 
@@ -611,17 +611,8 @@ public sealed class LightingStudioPage : Ui.Page
     void RenameLayer()
     {
         if (Current is not { } l) return;
-        using var f = new Form
-        {
-            Text = "Rename layer", Width = 420, Height = 160, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
-            MaximizeBox = false, MinimizeBox = false, BackColor = Ui.Back, ForeColor = Ui.Text, Font = Ui.Body, AutoScaleMode = AutoScaleMode.Dpi,
-        };
-        var box = new TextBox { Text = l.Name, Left = 16, Top = 16, Width = 370 };
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 306, Top = 60, Width = 80 };
-        f.Controls.AddRange([box, ok]);
-        f.AcceptButton = ok;
-        if (f.ShowDialog(FindForm()) != DialogResult.OK || string.IsNullOrWhiteSpace(box.Text)) return;
-        l.Name = box.Text.Trim();
+        if (Ui.Prompt(FindForm(), "Rename layer", "Layer name", l.Name) is not { } name || string.IsNullOrWhiteSpace(name)) return;
+        l.Name = name.Trim();
         RefreshLayers();
         Commit();
     }
