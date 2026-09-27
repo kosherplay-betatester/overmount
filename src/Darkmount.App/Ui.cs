@@ -138,6 +138,7 @@ public static class Ui
         form.ResumeLayout(false);
         form.PerformLayout();
         MarkScaled(form);
+        GuardWheel(form);
         form.Load += (_, _) =>
         {
             if (form.WindowState != FormWindowState.Normal) return;
@@ -198,7 +199,38 @@ public static class Ui
             if (Math.Abs(factor - 1) > 0.001f) child.Scale(new SizeF(factor, factor));
             MarkScaled(child);
         }
+        GuardWheel(child);
         parent.Controls.Add(child);
+    }
+
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Control, object> WheelGuarded = new();
+
+    /// <summary>
+    /// Drop-downs and sliders ignore the mouse wheel and scroll the page instead. Windows sends the wheel to the control
+    /// under the pointer, so scrolling a long page used to flip a drop-down it passed over (Gradient → Dual → Single),
+    /// and every flip rewrote the keyboard's lighting. An open drop-down list still scrolls as usual.
+    /// </summary>
+    public static void GuardWheel(Control root)
+    {
+        if (root is ComboBox or TrackBar && !WheelGuarded.TryGetValue(root, out _))
+        {
+            WheelGuarded.AddOrUpdate(root, WheelGuarded);
+            root.MouseWheel += OnGuardedWheel;
+        }
+        foreach (Control child in root.Controls) GuardWheel(child);
+    }
+
+    static void OnGuardedWheel(object? sender, MouseEventArgs e)
+    {
+        if (sender is ComboBox { DroppedDown: true } || sender is not Control control) return;
+        if (e is HandledMouseEventArgs handled) handled.Handled = true;  // the value stays as it is
+        Control? scroller = control.Parent;
+        while (scroller is not null && scroller is not ScrollableControl { AutoScroll: true }) scroller = scroller.Parent;
+        if (scroller is ScrollableControl page)
+        {
+            var at = page.AutoScrollPosition;                             // negative offsets
+            page.AutoScrollPosition = new Point(-at.X, Math.Max(0, -at.Y - e.Delta));
+        }
     }
 
     /// <inheritdoc cref="Add"/>

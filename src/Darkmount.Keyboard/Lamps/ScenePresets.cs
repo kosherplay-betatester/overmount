@@ -256,6 +256,21 @@ public static class ScenePresets
         ]),
 
         ("Party & music", [
+            Scene("Beat rings", "Every kick drum sends a coloured ring across the keys and flashes the frame.",
+                Fx(SceneEffect.BeatRings, speed: 5, name: "Rings"),
+                Fx(SceneEffect.Static, ["03010A"], name: "Dark")),
+
+            Scene("Nightclub", "The bass kicks the frame red, the melody colours the keys, the hi-hats sparkle.",
+                Fx(SceneEffect.ClubLights, speed: 5)),
+
+            Scene("Festival", "Beat rings bursting over club lights: the full festival stage.",
+                Fx(SceneEffect.BeatRings, ["FFFFFF", "FFE600"], speed: 6, name: "Rings"),
+                Fx(SceneEffect.ClubLights, ["B000FF", "FF0080", "00B3FF", "FFD000"], speed: 5, brightness: 70, name: "Stage")),
+
+            Scene("Oscilloscope", "A glowing waveform dancing across the keys to your music.",
+                Fx(SceneEffect.Waveform, speed: 5, name: "Waveform"),
+                Fx(SceneEffect.Static, ["000805"], name: "Screen")),
+
             Scene("Disco fever", "A light-up dance floor: blocks of keys change colour on every beat while the edges chase.",
                 Fx(SceneEffect.Disco, speed: 5)),
 
@@ -313,6 +328,29 @@ public static class ScenePresets
         ]),
 
         ("Typing", [
+            Scene("Keystroke lightning", "Lightning arcs jump from each key to the next one you press.",
+                Fx(SceneEffect.KeyLightning, ["7FDBFF"], speed: 5, name: "Arcs"),
+                Fx(SceneEffect.Static, ["00030C"], name: "Night")),
+
+            Scene("Storm typer", "White-violet lightning jumps between your keys inside a real thunderstorm.",
+                Fx(SceneEffect.KeyLightning, ["FFFFFF", "B070FF"], speed: 6, name: "Arcs"),
+                Fx(SceneEffect.Lightning, ["8FA8FF", "03030F"], speed: 4, brightness: 60, name: "Storm")),
+
+            Scene("Laser typing", "Every key fires coloured laser beams along its row.",
+                Fx(SceneEffect.LaserTyping, speed: 5, name: "Lasers"),
+                Fx(SceneEffect.Static, ["050008"], name: "Dark")),
+
+            Scene("Rainbow typing", "Each key you press lights up in the next colour of the rainbow and fades slowly.",
+                Fx(SceneEffect.RainbowTyping, ["FF0000"], speed: 5, name: "Rainbow keys"),
+                Fx(SceneEffect.Static, ["FFFFFF"], brightness: 4, name: "Dim base")),
+
+            Scene("Combo meter", "Type fast and the frame fills like a fighting-game combo bar; flat out, everything turns rainbow.",
+                Fx(SceneEffect.ComboMeter, speed: 5)),
+
+            Scene("Welding sparks", "Sparks fly out of every key you hit and rain down.",
+                Fx(SceneEffect.KeySparks, speed: 5, name: "Sparks"),
+                Fx(SceneEffect.Static, ["0A0300"], name: "Workshop")),
+
             Scene("Typing heatmap", "Keys warm from cold blue to hot red the more you type on them.",
                 Fx(SceneEffect.TypingHeatmap)),
 
@@ -349,12 +387,30 @@ public static class ScenePresets
                 Fx(SceneEffect.CpuTemperature, on: On.Edges, name: "CPU temperature"),
                 Fx(SceneEffect.Static, ["FFFFFF"], brightness: 40, on: On.Keys, name: "White keys")),
 
+        ]),
+
+        ("Screen & mouse", [
             Scene("Screen sync (Ambilight)", "Keys mirror the screen above them and the edge lights glow with its borders.",
                 Fx(SceneEffect.ScreenSync)),
+
+            Scene("Screen mood", "The whole keyboard glows in your screen's overall colour.",
+                Fx(SceneEffect.ScreenMood)),
+
+            Scene("Game flashes", "Explosions and muzzle flashes on screen flash the keyboard, over the screen's mood colour.",
+                Fx(SceneEffect.ScreenFlash, speed: 5, name: "Flashes"),
+                Fx(SceneEffect.ScreenMood, brightness: 60, name: "Mood")),
 
             Scene("Ambilight typing", "Screen sync, plus a white flash on every key you press.",
                 Fx(SceneEffect.Reactive, ["FFFFFF"], speed: 6, on: On.Keys, name: "Key flash"),
                 Fx(SceneEffect.ScreenSync, name: "Screen sync")),
+
+            Scene("Mouse spotlight", "The keyboard becomes a mini-map of your screens: a spotlight follows your mouse, clicks send ripples.",
+                Fx(SceneEffect.MouseSpotlight, speed: 5, name: "Spotlight"),
+                Fx(SceneEffect.Static, ["02030A"], name: "Dark")),
+
+            Scene("Cursor radar", "A green radar sweeps the keyboard while a blip tracks your mouse pointer.",
+                Fx(SceneEffect.MouseSpotlight, ["B6FFB6", "FFE600"], speed: 5, name: "Blip"),
+                Fx(SceneEffect.Radar, speed: 4, brightness: 70, name: "Radar")),
         ]),
     ];
 }

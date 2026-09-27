@@ -6,9 +6,20 @@ static class Program
     public const string ExitEventName = @"Local\OverMount.Exit";
 
     [STAThread]
-    static void Main(string[] args)
+    static int Main(string[] args)
     {
         bool Has(string flag) => args.Contains(flag, StringComparer.OrdinalIgnoreCase);
+        // Background roles first: no window, no settings, no migration (they may run as SYSTEM or as an administrator).
+        if (Has("--sensor-helper")) return Helper.CpuSensorHelper.Run();
+        if (Has("--setup-cpu-sensor")) return Setup.CpuSensorSetup.RunElevatedSetup();
+        if (Has("--remove-cpu-sensor")) return Setup.CpuSensorSetup.RunElevatedRemove();
+        if (Has("--afterburner-autostart") && args.Length >= 2) return Setup.Companions.RunElevatedAfterburnerAutostart(args[^1]);
+        Run(args, Has);
+        return 0;
+    }
+
+    static void Run(string[] args, Func<string, bool> Has)
+    {
         if (Has("--exit"))
         {
             if (EventWaitHandle.TryOpenExisting(ExitEventName, out var running)) using (running) running.Set();

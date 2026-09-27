@@ -21,15 +21,23 @@ public sealed class CompanionsDialog : Form
     readonly bool _winget;
     readonly List<string> _log = [];
     readonly HashSet<CompanionApp> _ready = [];
-    bool _busy, _autostartOn;
+    readonly CheckBox _sensorBox = new()
+    {
+        Text = "OverMount CPU sensor (recommended)", AutoSize = true, ForeColor = Ui.Text, Font = new Font("Segoe UI Semibold", 10.5f),
+        Margin = new Padding(0, 6, 0, 0), UseMnemonic = false,
+    };
+    readonly Label _sensorState = new() { AutoSize = true, Font = Ui.Body, Margin = new Padding(0, 8, 0, 0), UseMnemonic = false };
+    readonly bool _cpuTempAvailable;
+    bool _busy, _autostartOn, _sensorReady;
 
-    CompanionsDialog(IReadOnlyList<CompanionStatus> status, bool autostartOn, bool winget)
+    CompanionsDialog(IReadOnlyList<CompanionStatus> status, bool autostartOn, bool winget, bool sensorRunning, bool cpuTempAvailable)
     {
         _winget = winget;
+        _cpuTempAvailable = cpuTempAvailable;
         Ui.BeginLayout(this);
         Text = "OverMount — sensor apps";
         Icon = AppIcon.Window;
-        ClientSize = new Size(660, 540);
+        ClientSize = new Size(660, 620);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -39,12 +47,21 @@ public sealed class CompanionsDialog : Form
 
         var body = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new Padding(24, 18, 24, 6) };
         body.Controls.Add(new Label { Text = "Get the most out of OverMount", AutoSize = true, Font = new Font("Segoe UI Semibold", 15f), ForeColor = Ui.Text, Margin = new Padding(0, 0, 0, 4), UseMnemonic = false });
-        body.Controls.Add(Ui.Note("GPU temperature, load, VRAM and CPU load come from Windows itself. These free apps add CPU temperature, " +
-                                  "CPU watts and in-game FPS. Nothing is installed or started unless you click Set up.", 600));
+        body.Controls.Add(Ui.Note("GPU temperature, load, VRAM, CPU load and CPU watts come from Windows itself. CPU temperature needs " +
+                                  "a driver: OverMount's own CPU sensor or MSI Afterburner / HWiNFO. RivaTuner adds in-game FPS. " +
+                                  "Nothing is installed or started unless you click Set up.", 600));
 
         var table = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 8, 0, 4) };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var sensorStack = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 0, 8, 4) };
+        sensorStack.Controls.Add(_sensorBox);
+        var sensorPurpose = Ui.Note("CPU temperature (and watts) read by OverMount itself, no extra app needed. Installs the " +
+                                    "open-source PawnIO driver and a small helper that runs in the background.", 400);
+        sensorPurpose.Margin = new Padding(20, 0, 0, 2);
+        sensorStack.Controls.Add(sensorPurpose);
+        table.Controls.Add(sensorStack);
+        table.Controls.Add(_sensorState);
         foreach (var app in Companions.All)
         {
             var box = new CheckBox { Text = app.Name, AutoSize = true, ForeColor = Ui.Text, Font = new Font("Segoe UI Semibold", 10.5f), Margin = new Padding(0, 6, 0, 0), UseMnemonic = false };
@@ -82,7 +99,7 @@ public sealed class CompanionsDialog : Form
 
         Controls.Add(body);
         Controls.Add(buttons);
-        ShowStatus(status, autostartOn, initial: true);
+        ShowStatus(status, autostartOn, sensorRunning, initial: true);
         Ui.EndLayout(this);
         FormClosing += (_, e) => { if (_busy && e.CloseReason is CloseReason.UserClosing or CloseReason.FormOwnerClosing) e.Cancel = true; };
         FormClosed += (_, _) => { if (_open == this) _open = null; };
@@ -93,22 +110,34 @@ public sealed class CompanionsDialog : Form
     /// Opens the assistant (or brings the open one forward). Looking around takes a moment, so it runs in the background.
     /// It has no owner window on purpose: setup can take minutes and must not end when the settings window is closed.
     /// </summary>
-    public static async Task OpenAsync()
+    /// <param name="cpuTempAvailable">Some source already delivers CPU temperature (the CPU sensor row is then optional).</param>
+    public static async Task OpenAsync(bool cpuTempAvailable)
     {
         if (_open is { IsDisposed: false } open) { open.Activate(); return; }
-        var (status, autostart, winget) = await Task.Run(() => (Companions.Check(), Companions.AfterburnerStartsWithWindows(), Companions.WingetAvailable()));
+        var (status, autostart, winget, sensor) = await Task.Run(() =>
+            (Companions.Check(), Companions.AfterburnerStartsWithWindows(), Companions.WingetAvailable(), CpuSensorSetup.IsRunning));
         if (_open is { IsDisposed: false } other) { other.Activate(); return; } // opened twice while looking
-        _open = new CompanionsDialog(status, autostart, winget);
+        _open = new CompanionsDialog(status, autostart, winget, sensor, cpuTempAvailable);
         _open.Show();
         _open.Activate();
     }
 
-    /// <summary>True when a required app is missing or not running (and won't start with Windows). Runs in the background.</summary>
-    public static Task<bool> NeedsAttentionAsync() => Task.Run(() => Companions.NeedsAttention(Companions.Check(), Companions.AfterburnerStartsWithWindows()));
+    /// <summary>
+    /// True when a required app is missing or not running (and won't start with Windows), or nothing delivers CPU
+    /// temperature. Runs in the background.
+    /// </summary>
+    public static Task<bool> NeedsAttentionAsync(bool cpuTempAvailable) => Task.Run(() =>
+        !cpuTempAvailable || Companions.NeedsAttention(Companions.Check(), Companions.AfterburnerStartsWithWindows()));
 
-    void ShowStatus(IReadOnlyList<CompanionStatus> status, bool autostartOn, bool initial)
+    void ShowStatus(IReadOnlyList<CompanionStatus> status, bool autostartOn, bool sensorRunning, bool initial)
     {
-        bool anything = false;
+        _sensorReady = sensorRunning;
+        (_sensorState.Text, _sensorState.ForeColor) = sensorRunning ? ("\u2714 Running", Color.FromArgb(76, 217, 100))
+            : CpuSensorSetup.IsSetUp ? ("Set up, not running", Color.FromArgb(255, 176, 32))
+            : ("Not set up", _cpuTempAvailable ? Ui.Dim : Color.FromArgb(255, 176, 32));
+        if (initial || sensorRunning) _sensorBox.Checked = !sensorRunning && !_cpuTempAvailable;
+        _sensorBox.ForeColor = sensorRunning ? Ui.Dim : Ui.Text;
+        bool anything = !sensorRunning && !_cpuTempAvailable;
         foreach (var s in status)
         {
             var (box, state) = _rows[s.App];
@@ -140,6 +169,7 @@ public sealed class CompanionsDialog : Form
     void Lock(bool busy)
     {
         foreach (var (app, (box, _)) in _rows) box.AutoCheck = !busy && !_ready.Contains(app);
+        _sensorBox.AutoCheck = !busy && !_sensorReady;
         _autostart.AutoCheck = !busy && !_autostartOn;
         _go.Enabled = _close.Enabled = !busy;
         UseWaitCursor = busy;
@@ -158,7 +188,8 @@ public sealed class CompanionsDialog : Form
         if (_busy) return;
         var chosen = Companions.All.Where(a => !_ready.Contains(a) && _rows[a].Box.Checked).ToList();
         bool autostart = !_autostartOn && _autostart.Checked;
-        if (chosen.Count == 0 && !autostart) { Say("Nothing selected."); return; }
+        bool sensor = !_sensorReady && _sensorBox.Checked;
+        if (chosen.Count == 0 && !autostart && !sensor) { Say("Nothing selected."); return; }
 
         _busy = true;
         Lock(true);
@@ -166,6 +197,23 @@ public sealed class CompanionsDialog : Form
         bool needsHwInfoSetting = false;
         try
         {
+            // 0. OverMount's own CPU sensor: PawnIO driver + helper, one permission prompt.
+            if (sensor)
+            {
+                Say("Setting up OverMount's CPU sensor... Windows asks for permission once; the driver install can take a minute.");
+                switch (await Task.Run(CpuSensorSetup.SetUpAsync)) // off the UI thread: the prompt blocks the caller
+                {
+                    case CpuSensorSetup.Result.Running: Say("\u2714 CPU sensor running: CPU temperature shows up on the dock."); break;
+                    case CpuSensorSetup.Result.Declined: Say("CPU sensor skipped (permission declined)."); break;
+                    case CpuSensorSetup.Result.NeedsPawnIo:
+                        Say("The CPU sensor needs the PawnIO driver, which couldn't be installed automatically. Opening its page: " +
+                            "install it, then click Set up again.");
+                        OpenPage(CpuSensorSetup.PawnIoPage);
+                        break;
+                    default: Say("The CPU sensor couldn't be started (details in the log: tray icon, Open log folder)."); break;
+                }
+            }
+
             // 1. Install what's missing (Afterburner first: its installer may bring RivaTuner along).
             foreach (var app in chosen)
             {
@@ -240,11 +288,12 @@ public sealed class CompanionsDialog : Form
             _busy = false;
             if (!IsDisposed)
             {
-                var (status, autostartOn) = await Task.Run(() => (Companions.Check(), Companions.AfterburnerStartsWithWindows()));
+                var (status, autostartOn, sensorOn) = await Task.Run(() =>
+                    (Companions.Check(), Companions.AfterburnerStartsWithWindows(), CpuSensorSetup.IsRunning));
                 if (!IsDisposed)
                 {
-                    ShowStatus(status, autostartOn, initial: false);
-                    bool ready = !Companions.NeedsAttention(status, afterburnerAutostarts: false);
+                    ShowStatus(status, autostartOn, sensorOn, initial: false);
+                    bool ready = !Companions.NeedsAttention(status, afterburnerAutostarts: false) && (sensorOn || _cpuTempAvailable);
                     Say(ready ? "All set! CPU temperature, watts and FPS show up within a few seconds."
                         : "Some apps still aren't running — see above. You can come back here from Home → Setup check.");
                     if (needsHwInfoSetting) Say("In HWiNFO, open Settings and tick \"Shared Memory Support\" so OverMount can read it.");

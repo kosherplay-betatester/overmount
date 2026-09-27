@@ -25,6 +25,7 @@ public sealed class LightingPage : Ui.Page
     readonly Dictionary<Effect, Button> _effectButtons = [];
     Effect _effect = Effect.Static;
     bool _loading;
+    int _edits; // counts edits, so a keyboard read that finishes after one doesn't overwrite it
 
     /// <param name="beforeApply">Called before a change is written (the host hands the LEDs to the built-in effect).</param>
     public LightingPage(KeyboardService keyboard, Action? beforeApply = null)
@@ -96,6 +97,7 @@ public sealed class LightingPage : Ui.Page
     void Changed()
     {
         if (_loading) return;
+        _edits++;
         _preview.Invalidate();
         _applyTimer.Stop();
         _applyTimer.Start();
@@ -237,6 +239,7 @@ public sealed class LightingPage : Ui.Page
     async Task LoadFromKeyboard()
     {
         _status.Text = "Reading the keyboard's lighting…";
+        int edits = _edits;
         try
         {
             var (mode, config) = await _keyboard.Run(q =>
@@ -244,6 +247,9 @@ public sealed class LightingPage : Ui.Page
                 var l = new Lighting(q);
                 return (l.GetMode(), l.GetLayerConfig());
             });
+            if (edits != _edits || _applyTimer.Enabled) { _status.Text = ""; return; } // you changed something meanwhile
+            // The keyboard may report its angled gradient variant; it's still a gradient here.
+            if (config.ColorMode == ColorMode.OrientedGradient) config = config with { ColorMode = ColorMode.Gradient };
             Show(mode, config);
             _status.Text = mode is LightingMode.Custom or LightingMode.Realtime
                 ? "The keyboard was left in desktop-driven lighting; any change here switches it back to this built-in effect."

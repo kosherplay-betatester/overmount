@@ -21,6 +21,9 @@ public sealed class KeyPressFeed : IDisposable
     readonly ConcurrentDictionary<int, double> _pressed = new();
     readonly ConcurrentDictionary<int, (double Heat, double At)> _heat = new();
     readonly Dictionary<byte, int> _usageToKey;
+    readonly Darkmount.Keyboard.Lamps.KeyPress[] _log = new Darkmount.Keyboard.Lamps.KeyPress[48]; // the last presses, in order
+    readonly Lock _logGate = new();
+    int _logNext, _logCount;
     IntPtr _hook;
 
     /// <param name="clock">The animation clock the lighting engine also uses.</param>
@@ -45,6 +48,22 @@ public sealed class KeyPressFeed : IDisposable
 
     static double Decay(double heat, double seconds) => heat * Math.Pow(0.5, seconds / HeatHalfLifeSeconds);
 
+    /// <summary>The presses of the last <paramref name="seconds"/>, oldest first (key ids and times only).</summary>
+    public IReadOnlyList<Darkmount.Keyboard.Lamps.KeyPress> RecentPresses(double seconds)
+    {
+        double since = _clock.Elapsed.TotalSeconds - seconds;
+        var list = new List<Darkmount.Keyboard.Lamps.KeyPress>(_logCount);
+        lock (_logGate)
+        {
+            for (int i = 0; i < _logCount; i++)
+            {
+                var press = _log[(_logNext - _logCount + i + _log.Length) % _log.Length];
+                if (press.At >= since) list.Add(press);
+            }
+        }
+        return list;
+    }
+
     IntPtr Callback(int code, IntPtr wParam, IntPtr lParam)
     {
         if (code >= 0 && (wParam == WmKeyDown || wParam == WmSysKeyDown))
@@ -54,6 +73,12 @@ public sealed class KeyPressFeed : IDisposable
             {
                 double now = _clock.Elapsed.TotalSeconds;
                 _pressed[key] = now;
+                lock (_logGate)
+                {
+                    _log[_logNext] = new(key, now);
+                    _logNext = (_logNext + 1) % _log.Length;
+                    _logCount = Math.Min(_logCount + 1, _log.Length);
+                }
                 _heat.AddOrUpdate(key, (HeatPerPress, now), (_, old) => (Math.Min(1, Decay(old.Heat, now - old.At) + HeatPerPress), now));
             }
         }

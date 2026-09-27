@@ -119,7 +119,7 @@ public sealed class StatsScreen : IDockScreen
                 using var hintFont = Theme.Font(Theme.SemiBold, 9.5f);
                 using var hintPaint = Theme.Fill(Theme.TextDim);
                 float hx = left + labelFont.MeasureText(label) + 7;
-                canvas.DrawText(Theme.Ellipsize("needs Afterburner", hintFont, colRight - 6 - hx), hx, labelBaseline, SKTextAlign.Left, hintFont, hintPaint);
+                canvas.DrawText(Theme.Ellipsize("needs sensor setup", hintFont, colRight - 6 - hx), hx, labelBaseline, SKTextAlign.Left, hintFont, hintPaint);
             }
             DrawBig(canvas, left, panel.Top + 54, 47, big, primary, accent);
             TextRuns.Draw(canvas, left, panel.Top + 70,

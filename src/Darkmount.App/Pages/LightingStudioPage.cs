@@ -322,11 +322,8 @@ public sealed class LightingStudioPage : Ui.Page
         if (!_shown) { _shown = true; OnShown(); }
         else if (_deviceLayout().Count > 0 && _previewLayout.Any(p => p.LampId >= SyntheticKeyLamp)) BuildView(); // keyboard appeared
         var live = _deviceLayout().Count > 0 && _get().RgbEnabled ? _liveFrame() : null;
-        var frame = live is { Count: > 0 } ? live : SceneRenderer.Render(_scene, new SceneContext
-        {
-            Seconds = _clock.Elapsed.TotalSeconds, Lamps = _previewLayout,
-            CpuTemp = 55, CpuLoad = 35, GpuTemp = 50, GpuLoad = 40, AudioLevel = 0.5 + 0.4 * Math.Sin(_clock.Elapsed.TotalSeconds * 3),
-        });
+        // Without the real keyboard the preview plays pretend typing, music, mouse and screen events, so reactive effects show.
+        var frame = live is { Count: > 0 } ? live : SceneRenderer.Render(_scene, SceneDemo.Context(_clock.Elapsed.TotalSeconds, _previewLayout));
         var colors = new Dictionary<int, Color>();
         foreach (var p in _previewLayout)
             if (frame.TryGetValue(p.LampId, out var c))

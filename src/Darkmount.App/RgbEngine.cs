@@ -23,6 +23,9 @@ public sealed class RgbEngine : IDisposable
     readonly KeyPressFeed? _keys;
     readonly AudioAnalyzer _audio = new();
     readonly ScreenSampler _screen = new();
+    readonly BeatDetector _beats = new();
+    readonly FlashDetector _flashes = new();
+    readonly MouseTracker _mouse = new();
     readonly Thread _thread;
     readonly Stopwatch _clock;
     volatile bool _stop;
@@ -122,15 +125,19 @@ public sealed class RgbEngine : IDisposable
                 var scene = s.Scene ?? ScenePresets.All[0];
                 bool needsAudio = scene.Layers.Any(l => l.Enabled && SceneEffects.Get(l.Effect).NeedsAudio);
                 bool needsScreen = scene.Layers.Any(l => l.Enabled && SceneEffects.Get(l.Effect).NeedsScreen);
+                bool needsMouse = scene.Layers.Any(l => l.Enabled && SceneEffects.Get(l.Effect).NeedsMouse);
                 _audio.SetActive(needsAudio && !alert);
                 var (level, bands) = needsAudio ? _audio.Analyse() : (0, Array.Empty<double>());
                 if (needsScreen && DateTime.UtcNow >= _nextScreenSample)
                 {
                     _screenGrid = _screen.Sample();
                     _nextScreenSample = DateTime.UtcNow.AddMilliseconds(80);
+                    _flashes.Feed(_clock.Elapsed.TotalSeconds, _screenGrid);
                 }
 
                 double t = _clock.Elapsed.TotalSeconds;
+                if (needsAudio) _beats.Feed(t, bands, level);
+                if (needsMouse) _mouse.Poll(t);
                 var snap = _snapshot();
                 var ctx = new SceneContext
                 {
@@ -144,6 +151,12 @@ public sealed class RgbEngine : IDisposable
                     ScreenGrid = _screenGrid,
                     ScreenGridWidth = ScreenSampler.GridWidth,
                     ScreenGridHeight = ScreenSampler.GridHeight,
+                    KeyPresses = _keys?.RecentPresses(4) ?? [],
+                    BeatTimes = needsAudio ? _beats.Beats : [],
+                    ScreenFlashes = needsScreen ? _flashes.Flashes : [],
+                    MouseX = needsMouse ? _mouse.X : null,
+                    MouseY = needsMouse ? _mouse.Y : null,
+                    MouseClicks = needsMouse ? _mouse.Clicks : [],
                 };
 
                 Dictionary<int, LampColor> frame;

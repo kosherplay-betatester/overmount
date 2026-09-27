@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea043?style=flat-square" alt="MIT license"></a>
 </p>
 
-**OverMount** takes over your **be quiet! Dark Mount** (and Light Mount) keyboard and makes it do far more than the stock software. You get a live hardware dashboard on the media dock with **FPS and 1% lows** in games. You get IO Center-style **per-key RGB** with layers, paint mode and 76 premade scenes, plus lighting that reacts to your music, your screen and your typing. And you get macros, key remapping, per-game profiles, a focus timer, and one-click import of your IO Center profiles.
+**OverMount** takes over your **be quiet! Dark Mount** (and Light Mount) keyboard and makes it do far more than the stock software. You get a live hardware dashboard on the media dock with **FPS and 1% lows** in games. You get IO Center-style **per-key RGB** with layers, paint mode and 90 premade scenes, plus lighting that reacts to your typing, your music, your screen and your mouse. And you get macros, key remapping, per-game profiles, a focus timer, and one-click import of your IO Center profiles.
 
 It's one small tray app that installs in seconds with no admin rights, and it updates itself.
 
@@ -23,7 +23,7 @@ It's one small tray app that installs in seconds with no admin rights, and it up
 | | |
 |---|---|
 | 🎮 **Game dashboard on the dock** | CPU/GPU temperature, load and watts with live graphs, RAM/VRAM, and **FPS + 1% low** when a game runs (measured by OverMount itself from RivaTuner frame times). Pick what's big: temperature, load or watts. |
-| 🌈 **Lighting studio** | Stack up to 8 layers (effects on any keys or edge LEDs), **paint single keys** in any colour, and start from 76 premade scenes in 9 categories. Up to 30 fps. |
+| 🌈 **Lighting studio** | Stack up to 8 layers (effects on any keys or edge LEDs), **paint single keys** in any colour, and start from 90 premade scenes in 10 categories. Up to 30 fps. |
 | 🎵 **Reactive lighting** | Audio spectrum and audio pulse (from whatever your PC plays), screen sync (Ambilight), typing ripples and heatmaps, and CPU-temperature colours. |
 | 🧠 **Smart overlays** | Caps/Num/Scroll lock glow, a volume bar on F1–F12, a red mic-mute key, a shortcut helper while you hold Ctrl/Alt/Win, and focus-timer progress. Lights fade out when you lock the PC. |
 | 🖥️ **Six dock screens** | Stats, Now playing (Spotify, browsers…), Clock & calendar, Network, Focus timer, and your own GIF, video or pictures. Rotate them automatically or let smart screens pick. |
@@ -39,13 +39,14 @@ One **Lighting** page, one switch: **Studio** (OverMount draws layers, per-key c
 
 <p align="center"><img src="docs/images/app-lighting-paint.png" alt="Lighting studio with a paint layer and the edge-LED ring" width="92%"></p>
 
-- **Presets**: 76 scenes in 9 categories (Signature, Neon & synth, Space, Nature, Gaming, Party & music, Seasonal, Typing, System): Hyperspace, Fireworks show, Campfire, Thunderstorm, Cherry blossom, Tactical FPS, Disco fever, Halloween, Cyberpunk, Aurora, Gamer WASD, Screen sync… Click one, then tweak it.
+- **Presets**: 90 scenes in 10 categories (Signature, Neon & synth, Space, Nature, Gaming, Party & music, Seasonal, Typing, System, Screen & mouse): Keystroke lightning, Combo meter, Beat rings, Nightclub, Mouse spotlight, Game flashes, Hyperspace, Campfire, Thunderstorm, Tactical FPS, Halloween, Cyberpunk, Aurora, Gamer WASD… Click one, then tweak it. Without a keyboard the preview plays pretend typing, music and mouse moves so you can see the reactive ones.
 - **Layers**: each layer is an effect on the keys and edge LEDs you select. Click, Ctrl+click or drag a box to select, or use **Quick select** (WASD, arrows, F-row, numpad, top/bottom/left/right edge, keyboard ring, numpad ring…). The top layer wins; transparent effects such as Reactive and Ripple let the layers below show through.
 - **Paint layers** (per-key colours): pick a colour and click or drag over keys and edge LEDs. There's an eraser, *Fill everything* and *Clear all*. This matches IO Center's per-key lighting, and it's faster.
 - **Edge LEDs**: all 96 are shown as rings around the keyboard (64) and the numpad (32). Tell OverMount which side your numpad is on.
-- **38 effects**: Static, Color wave, Tornado, Breathing, Matrix, Reactive, Ripple, Rainbow, Plasma, Aurora, Fire, Ocean, Twinkle, Rain, Heartbeat, Police, Scanner, Color cycle, CPU temperature, Performance meter, Typing heatmap, Audio pulse, Audio spectrum, Lava, Candy, Screen sync, Starfield, Fireworks, Comets, Lightning storm, Glitch, Radar, Disco, Snowfall, Bubbles, Embers, Fireflies and Per-key colours.
+- **49 effects**: Static, Color wave, Tornado, Breathing, Matrix, Reactive, Ripple, Rainbow, Plasma, Aurora, Fire, Ocean, Twinkle, Rain, Heartbeat, Police, Scanner, Color cycle, CPU temperature, Performance meter, Typing heatmap, Audio pulse, Audio spectrum, Lava, Candy, Screen sync, Starfield, Fireworks, Comets, Lightning storm, Glitch, Radar, Disco, Snowfall, Bubbles, Embers, Fireflies, Keystroke lightning, Laser typing, Rainbow typing, Combo meter, Key sparks, Beat rings, Waveform, Club lights, Screen mood, Screen flash, Mouse spotlight and Per-key colours.
 
 <p align="center"><img src="docs/images/preset-gallery.png" alt="Eight of the premade lighting scenes" width="100%"></p>
+<p align="center"><img src="docs/images/preset-gallery-reactive.png" alt="Reactive scenes: Keystroke lightning, Laser typing, Rainbow typing, Combo meter, Welding sparks, Beat rings, Nightclub, Oscilloscope, Mouse spotlight, Screen mood" width="100%"></p>
 <p align="center"><img src="docs/images/preset-gallery-new.png" alt="Ten of the new lighting scenes: Hyperspace, Fireworks show, Neon comets, Campfire, Thunderstorm, Cherry blossom, Disco fever, Tactical FPS, Underwater, Halloween" width="100%"></p>
 
 ---
@@ -82,8 +83,9 @@ The Dark Mount's 320×240 media dock becomes a second screen:
 > Coming from IO Center? Open **Profiles → Import from IO Center…**. Your profiles are found automatically (exported `.ioprofile` files work too).
 
 ### Recommended companions
-OverMount already reads **CPU load, GPU temperature, GPU load, VRAM and RAM from Windows itself** (and GPU watts on NVIDIA cards), so the dashboard works right away. These free apps add the rest, and **OverMount can set them up for you**. On first start (or via **Home → Setup check → Set up**, or the tray menu's **Set up sensor apps…**) it shows what's missing and, only after you click **Set up**, installs them with winget, makes Afterburner start with Windows and starts them:
-- **MSI Afterburner**: **CPU temperature and CPU watts** (Windows can't read those without a driver), GPU watts on AMD/Intel, and more sensors.
+OverMount already reads **CPU load, CPU watts, GPU temperature, GPU load, VRAM and RAM from Windows itself** (and GPU watts on NVIDIA cards), so the dashboard works right away. The rest is one click away, and **OverMount sets it up for you**. On first start (or via **Home → Setup check → Set up**, or the tray menu's **Set up sensor apps…**) it shows what's missing and, only after you click **Set up**, installs and starts it:
+- **OverMount CPU sensor** (recommended): **CPU temperature** without any extra app. Windows can't read it without a driver, so this installs the open-source PawnIO driver and a small helper (one Windows permission prompt).
+- **MSI Afterburner**: CPU temperature too, GPU watts on AMD/Intel, more sensors, and it starts RivaTuner with Windows.
 - **RivaTuner Statistics Server** (installed with Afterburner): detects the running game. OverMount measures **1% lows** from its frame times, with no extra setup.
 - **HWiNFO** (optional): enable *Shared Memory Support* for more precise sensors.
 - For Studio lighting, Windows **Dynamic Lighting** must be off for the keyboard. The Home page checks this and opens the right settings page.
@@ -187,7 +189,8 @@ OverMount checks GitHub for a new release once a day (you can turn this off). **
 
 ## Privacy & safety
 
-- **Everything stays on your PC.** Audio-reactive effects analyse what your speakers play (never the microphone), and screen sync samples a 24×8 grid of screen colours. The key-press hook records only *which* key lit up and when, never text. None of it is stored or sent.
+- **Everything stays on your PC.** Audio-reactive effects analyse what your speakers play (never the microphone), and screen effects sample a 24×8 grid of screen colours. The key-press hook records only *which* key lit up and when, never text. The mouse position and clicks are read only while a mouse effect is on. None of it is stored or sent.
+- **OverMount CPU sensor** (optional, set up from *Set up sensor apps…*): installs the open-source, signed [PawnIO](https://pawnio.eu/) driver and runs a copy of OverMount from `C:\Program Files\OverMount` as SYSTEM, reading only the CPU's temperature and power (via LibreHardwareMonitor). It only works while OverMount runs, and uninstalling OverMount removes it.
 - The only network request is the optional update check to GitHub.
 - **Allowlisted commands only**: the code has no way to send firmware-update, factory-reset, serial-number, raw-storage, calibration or polling-rate commands, and it never talks to a keyboard in bootloader mode.
 - **Backups**: your original dock settings and complete keyboard setup (lighting, bindings, locks, display-key pictures) are saved before the first change. Exiting OverMount restores the dock and hands lighting back to the keyboard.
@@ -220,6 +223,8 @@ The published `OverMount.exe` is also its own installer: run it from anywhere an
 ## License
 
 OverMount is free and open source under the [MIT License](LICENSE): use it, change it and share it. Pull requests and bug reports are welcome.
+
+Built with [SkiaSharp](https://github.com/mono/SkiaSharp) (MIT), [NAudio](https://github.com/naudio/NAudio) (MIT), [HidSharp](https://www.zer7.com/software/hidsharp) (Apache 2.0) and [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL 2.0, unmodified); the optional CPU sensor uses the [PawnIO](https://pawnio.eu/) driver.
 
 ---
 

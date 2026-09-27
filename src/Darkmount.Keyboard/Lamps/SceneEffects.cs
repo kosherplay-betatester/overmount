@@ -17,6 +17,9 @@ public sealed record SceneEffectInfo(
     public IReadOnlyList<string> DefaultColors { get; init; } = ["FF2800"];
 
     public SceneDirection DefaultDirection { get; init; } = SceneDirection.Right;
+
+    /// <summary>Follows the mouse pointer and clicks.</summary>
+    public bool NeedsMouse { get; init; }
 }
 
 /// <summary>The effect catalogue for a lighting editor.</summary>
@@ -140,6 +143,37 @@ public static class SceneEffects
         new(SceneEffect.Fireflies, "Fireflies", "A few warm lights wandering and blinking in the dark (Dual: fireflies, night).",
             AllModes, NoDirections, true, false, false, false, false)
             { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["D8FF4A", "020A02"] },
+        new(SceneEffect.KeyLightning, "Keystroke lightning", "Lightning arcs jump from each key to the next one you press.",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColors = ["7FDBFF"] },
+        new(SceneEffect.LaserTyping, "Laser typing", "Every key fires laser beams left and right along its row (Gradient: a colour per key).",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FF0040", "00E5FF", "39FF14", "FFE600"] },
+        new(SceneEffect.RainbowTyping, "Rainbow typing", "Each key you press lights up in the next colour and fades slowly (Single: the whole rainbow).",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColors = ["FF0000"] },
+        new(SceneEffect.ComboMeter, "Combo meter", "Your typing speed as a game combo: the frame fills and the keys heat up the faster you type; flat out it turns into a rainbow.",
+            [SceneColorMode.Gradient, SceneColorMode.Dual], NoDirections, true, true, false, false, true)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["00FF66", "FFE600", "FF6A00", "FF0040"] },
+        new(SceneEffect.KeySparks, "Key sparks", "Sparks burst out of every key you press and fall away.",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FFE08A", "FF8C00", "FF3000", "FFFFFF"] },
+        new(SceneEffect.BeatRings, "Beat rings", "Every beat of the music sends a ring out from the centre and flashes the frame.",
+            AllModes, NoDirections, true, false, false, true, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FF00C8", "00E5FF", "FFE600", "7000FF"] },
+        new(SceneEffect.Waveform, "Waveform", "A glowing oscilloscope line across the keys whose waves grow with the music.",
+            AllModes, NoDirections, true, false, false, true, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["00FFF0", "7000FF", "FF00C8"] },
+        new(SceneEffect.ClubLights, "Club lights", "The bass kicks the frame, the mids colour the keys and the treble throws white sparkles (first colour: the kick).",
+            AllModes, NoDirections, true, false, false, true, true)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FF0040", "B000FF", "00B3FF", "FFD000"] },
+        new(SceneEffect.ScreenMood, "Screen mood", "The keyboard glows in your screen's overall colour, a little richer.",
+            NoModes, NoDirections, false, false, false, false, true, NeedsScreen: true),
+        new(SceneEffect.ScreenFlash, "Screen flash", "Explosions, muzzle flashes and lightning on screen flash the keyboard in their colour.",
+            NoModes, NoDirections, true, false, false, false, false, NeedsScreen: true),
+        new(SceneEffect.MouseSpotlight, "Mouse spotlight", "The keyboard as a mini-map of your screens: a spotlight follows the mouse and clicks send ripples (Dual: left, right click).",
+            AllModes, NoDirections, true, false, false, false, false)
+            { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["00E5FF", "FF00C8"], NeedsMouse = true },
         new(SceneEffect.PerKey, "Per-key colours", "Paint every key and edge LED its own colour, like IO Center's per-key lighting. " +
             "Unpainted lamps show the layers below.", NoModes, NoDirections, false, false, false, false, false),
     ];

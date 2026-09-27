@@ -306,10 +306,12 @@ public sealed class TrayApp : ApplicationContext
             new("IO Center is closed", !ioCenter, false,
                 ioCenter ? "IO Center is running, so OverMount has paused. Right-click its tray icon → Exit." : "OverMount controls the keyboard.",
                 "Close IO Center", () => TakeControlFromIoCenter(ask: true)),
-            new("MSI Afterburner is running (for CPU temperature)", !hints.Contains(Darkmount.Sensors.SensorHub.HintAfterburner)
-                    || !hints.Contains(Darkmount.Sensors.SensorHub.HintHwInfo), false,
-                "GPU temperature, load, VRAM and CPU load come from Windows itself. CPU temperature and CPU watts need MSI " +
-                "Afterburner (or HWiNFO) running.", "Set up", ShowCompanions),
+            new("CPU temperature", _pipeline.LastSnapshot?.CpuTemp is not null, false,
+                _pipeline.LastSnapshot?.CpuTemp is not null ? "CPU temperature is being read."
+                    : "Windows can't read CPU temperature by itself. Set up OverMount's own CPU sensor (one Windows permission " +
+                      "prompt), or run MSI Afterburner or HWiNFO.", "Set up", ShowCompanions),
+            new("MSI Afterburner (optional)", !hints.Contains(Darkmount.Sensors.SensorHub.HintAfterburner), true,
+                "Extra sensors (GPU watts on AMD and Intel cards) and it starts RivaTuner with Windows.", "Set up", ShowCompanions),
             new("RivaTuner Statistics Server is running", !hints.Contains(Darkmount.Sensors.SensorHub.HintRtss), false,
                 "Detects the running game (FPS row, 1% lows, per-game profiles). MSI Afterburner starts it.", "Set up", ShowCompanions),
             new("HWiNFO shared memory (optional)", !hints.Contains(Darkmount.Sensors.SensorHub.HintHwInfo), true,
@@ -488,28 +490,33 @@ public sealed class TrayApp : ApplicationContext
 
     // ---------------------------------------------------------------- sensor apps
 
-    /// <summary>Opens the sensor-apps assistant (install / start / autostart Afterburner, RivaTuner, HWiNFO).</summary>
+    /// <summary>Opens the sensor-apps assistant (OverMount's CPU sensor; Afterburner, RivaTuner, HWiNFO).</summary>
     async void ShowCompanions()
     {
-        try { await Setup.CompanionsDialog.OpenAsync(); }
+        try { await Setup.CompanionsDialog.OpenAsync(cpuTempAvailable: _pipeline.LastSnapshot?.CpuTemp is not null); }
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
             Log.Write($"Sensor apps window failed: {e.Message}");
         }
     }
 
-    /// <summary>First start: if a sensor app is missing or not running, show the assistant once (it asks before doing anything).</summary>
+    /// <summary>
+    /// First start: if a sensor app is missing or not running, show the assistant once (it asks before doing anything).
+    /// People who saw it before OverMount had its own CPU sensor get it once more when CPU temperature is missing.
+    /// </summary>
     async Task OfferCompanionsOnce()
     {
-        if (_exiting || _settings.CompanionsOffered) return;
+        bool cpuTemp = _pipeline.LastSnapshot?.CpuTemp is not null;
+        if (_exiting || (_settings.CompanionsOffered && (_settings.CpuSensorOffered || cpuTemp))) return;
         bool needed;
-        try { needed = await Setup.CompanionsDialog.NeedsAttentionAsync(); }
+        try { needed = await Setup.CompanionsDialog.NeedsAttentionAsync(cpuTemp); }
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
             Log.Write($"Sensor apps check failed: {e.Message}");
             return;
         }
         _settings.CompanionsOffered = true;
+        _settings.CpuSensorOffered = true;
         SaveSettings();
         if (needed && !_exiting) ShowCompanions();
     }

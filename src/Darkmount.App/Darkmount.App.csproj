@@ -9,17 +9,23 @@
   <ItemGroup>
     <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />
     <PackageReference Include="SkiaSharp" Version="4.152.1" />
+    <!-- CPU temperature for the sensor helper process only (see Helper/CpuSensorHelper.cs). -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
+    <!-- Keep the keyboard's tested HID library: LibreHardwareMonitor asks for 2.6.4 but only uses it for devices the
+         helper never opens (fan controllers, PSUs), so the downgrade warning is expected. -->
+    <PackageReference Include="HidSharp" Version="2.1.0" />
   </ItemGroup>
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Product>OverMount</Product>
     <Copyright>Copyright (c) 2026 kosherplay-betatester and OverMount contributors. MIT License.</Copyright>
     <Description>OverMount: live PC stats, per-key RGB, macros and profiles for be quiet! Dark Mount and Light Mount keyboards.</Description>
     <AssemblyName>OverMount</AssemblyName>
+    <NoWarn>$(NoWarn);NU1605</NoWarn>
     <ApplicationIcon>Assets\OverMount.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">

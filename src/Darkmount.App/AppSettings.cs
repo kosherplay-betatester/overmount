@@ -94,6 +94,9 @@ public sealed class AppSettings
 
     /// <summary>The sensor-apps assistant was offered once on its own (it stays reachable from Home and the tray).</summary>
     public bool CompanionsOffered { get; set; }
+
+    /// <summary>The assistant was offered again for OverMount's own CPU sensor (1.3), when CPU temperature was missing.</summary>
+    public bool CpuSensorOffered { get; set; }
 }
 
 public static class SettingsStore

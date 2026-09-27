@@ -117,6 +117,17 @@ internal static partial class SceneShaders
         SceneEffect.Bubbles => Particles(f, BubbleStyle),
         SceneEffect.Embers => Particles(f, EmberStyle),
         SceneEffect.Fireflies => Particles(f, FireflyStyle),
+        SceneEffect.KeyLightning => KeyLightning(f),
+        SceneEffect.LaserTyping => LaserTyping(f),
+        SceneEffect.RainbowTyping => RainbowTyping(f),
+        SceneEffect.ComboMeter => ComboMeter(f),
+        SceneEffect.KeySparks => KeySparks(f),
+        SceneEffect.BeatRings => BeatRings(f),
+        SceneEffect.Waveform => Waveform(f),
+        SceneEffect.ClubLights => ClubLights(f),
+        SceneEffect.ScreenMood => ScreenMood(f),
+        SceneEffect.ScreenFlash => ScreenFlashes(f),
+        SceneEffect.MouseSpotlight => MouseSpotlight(f),
         _ => (in Pixel _) => Rgba.Clear,
     };
 

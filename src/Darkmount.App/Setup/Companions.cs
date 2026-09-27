@@ -27,7 +27,7 @@ public static class Companions
     static readonly string ProgramFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
     static readonly string ProgramFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 
-    public static readonly CompanionApp Afterburner = new("MSI Afterburner", "CPU temperature and CPU watts on the dock",
+    public static readonly CompanionApp Afterburner = new("MSI Afterburner", "More sensors (GPU watts on AMD and Intel cards); starts RivaTuner with Windows",
         "Guru3D.Afterburner", "MSIAfterburner", "MSIAfterburner.exe", "Afterburner",
         Path.Combine(ProgramFilesX86, "MSI Afterburner"), false, "https://www.msi.com/Landing/afterburner/graphics-cards");
 
@@ -45,17 +45,31 @@ public static class Companions
     public const string AfterburnerTask = "MSIAfterburner";
 
     /// <summary>The app's exe if installed (from its installed-apps entry, else the default folder), or null.</summary>
-    public static string? FindExe(CompanionApp app)
+    /// <param name="trustedOnly">
+    /// For anything that runs with administrator rights: only machine-wide entries, and only files under Program Files
+    /// (places a normal program can't change). The per-user list can be written by any program the user runs.
+    /// </param>
+    public static string? FindExe(CompanionApp app, bool trustedOnly = false)
     {
-        foreach (var folder in RegisteredFolders(app).Append(app.DefaultFolder))
+        foreach (var folder in RegisteredFolders(app, trustedOnly).Append(app.DefaultFolder))
         {
+            if (trustedOnly && !IsUnderProgramFiles(folder)) continue;
             var exe = Path.Combine(folder, app.ExeName);
             if (File.Exists(exe)) return exe;
         }
         return null;
     }
 
-    static IEnumerable<string> RegisteredFolders(CompanionApp app)
+    internal static bool IsUnderProgramFiles(string folder)
+    {
+        string full;
+        try { full = Path.GetFullPath(folder).TrimEnd('\\') + "\\"; }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { return false; }
+        return new[] { ProgramFiles, ProgramFilesX86 }.Any(root =>
+            root.Length > 0 && full.StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase));
+    }
+
+    static IEnumerable<string> RegisteredFolders(CompanionApp app, bool trustedOnly = false)
     {
         foreach (var (hive, path) in new[]
                  {
@@ -64,6 +78,7 @@ public static class Companions
                      (Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\"),
                  })
         {
+            if (trustedOnly && hive == Registry.CurrentUser) continue;
             string? folder;
             try
             {
@@ -156,8 +171,8 @@ public static class Companions
     /// <summary>True when Afterburner starts with Windows (its own logon task exists).</summary>
     public static bool AfterburnerStartsWithWindows() => RunQuiet("schtasks", $"/Query /TN \"{AfterburnerTask}\"") == 0;
 
-    /// <summary>Runs a console tool without a window; its exit code, or -1 when it can't run or takes over 15 s.</summary>
-    static int RunQuiet(string file, string args)
+    /// <summary>Runs a console tool without a window; its exit code, or -1 when it can't run or takes too long (15 s default).</summary>
+    internal static int RunQuiet(string file, string args, TimeSpan? timeout = null)
     {
         try
         {
@@ -168,7 +183,7 @@ public static class Companions
             if (p is null) return -1;
             _ = p.StandardOutput.ReadToEndAsync();
             _ = p.StandardError.ReadToEndAsync();
-            if (!p.WaitForExit(15000)) { try { p.Kill(); } catch (InvalidOperationException) { } return -1; }
+            if (!p.WaitForExit(timeout ?? TimeSpan.FromSeconds(15))) { try { p.Kill(); } catch (InvalidOperationException) { } return -1; }
             return p.ExitCode;
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException) { return -1; }
@@ -213,28 +228,46 @@ public static class Companions
         """;
 
     /// <summary>
-    /// Creates Afterburner's autostart task (one Windows permission prompt). True when it exists afterwards.
-    /// Throws <see cref="System.ComponentModel.Win32Exception"/> (1223) when the user declines the prompt.
+    /// Creates Afterburner's autostart task (one Windows permission prompt): an elevated run of this exe
+    /// ("--afterburner-autostart &lt;your account&gt;") finds Afterburner itself and writes the task definition where only
+    /// administrators can change it. True when the task exists afterwards. Throws
+    /// <see cref="System.ComponentModel.Win32Exception"/> (1223) when the user declines the prompt.
     /// </summary>
     public static async Task<bool> EnableAfterburnerAutostartAsync()
     {
-        var exe = FindExe(Afterburner) ?? throw new FileNotFoundException("MSI Afterburner is not installed.");
         var sid = System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value
                   ?? throw new InvalidOperationException("Your Windows account could not be identified.");
-        var xml = Path.Combine(Path.GetTempPath(), $"overmount-afterburner-{Guid.NewGuid():N}.xml");
-        await File.WriteAllTextAsync(xml, AfterburnerTaskXml(exe, sid), System.Text.Encoding.Unicode);
-        try
+        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("OverMount's own file could not be found.");
+        using (var p = Process.Start(new ProcessStartInfo(exe, $"--afterburner-autostart {sid}")
+               {
+                   UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden,
+               }))
         {
-            using var p = Process.Start(new ProcessStartInfo("schtasks", $"/Create /TN \"{AfterburnerTask}\" /XML \"{xml}\" /F")
-            {
-                UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden,
-            });
             if (p is not null) await p.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(2));
         }
-        finally
-        {
-            try { File.Delete(xml); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-        }
         return AfterburnerStartsWithWindows();
+    }
+
+    /// <summary>
+    /// "--afterburner-autostart &lt;sid&gt;", elevated. Only trusts Afterburner under Program Files (machine-wide entries),
+    /// so nothing a normal program wrote can end up running with administrator rights.
+    /// </summary>
+    public static int RunElevatedAfterburnerAutostart(string userSid)
+    {
+        try
+        {
+            var sid = new System.Security.Principal.SecurityIdentifier(userSid).Value; // throws unless it's a real SID
+            var exe = FindExe(Afterburner, trustedOnly: true);
+            if (exe is null) return 2;
+            var xml = CpuSensorSetup.ProtectedTempFile("afterburner-task.xml");
+            File.WriteAllText(xml, AfterburnerTaskXml(exe, sid), System.Text.Encoding.Unicode);
+            try { return RunQuiet("schtasks", $"/Create /TN \"{AfterburnerTask}\" /XML \"{xml}\" /F") == 0 ? 0 : 3; }
+            finally { File.Delete(xml); }
+        }
+        catch (Exception e) when (e is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            Log.Write($"Afterburner autostart failed: {e.Message}");
+            return 1;
+        }
     }
 }

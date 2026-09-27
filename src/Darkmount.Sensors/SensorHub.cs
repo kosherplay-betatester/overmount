@@ -2,7 +2,8 @@ namespace Darkmount.Sensors;
 
 /// <summary>
 /// Combines HWiNFO, MSI Afterburner, RTSS and Windows into one <see cref="Snapshot"/> per call.
-/// Per field the first source with a value wins: HWiNFO, then Afterburner, then Windows' own sensors
+/// Per field the first source with a value wins: HWiNFO, then Afterburner, then OverMount's own CPU sensor
+/// (<see cref="CpuSensorLink"/>, CPU temperature and watts), then Windows' own sensors
 /// (<see cref="WindowsSensors"/>: CPU load and watts, GPU load/temperature/VRAM, NVIDIA watts), so a PC without any monitoring
 /// app still shows real numbers.
 /// </summary>
@@ -12,6 +13,7 @@ public sealed class SensorHub : IDisposable
     public const string HintAfterburner = "MSI Afterburner (or HWiNFO) adds CPU temperature and watts";
     public const string HintRtss = "Start RivaTuner Statistics Server for game detection";
     public const string HintFpsLow = "Afterburner: enable 'Framerate 1% low' in Monitoring settings";
+    public const string HintCpuTemp = "No CPU temperature: tray icon → Set up sensor apps… (OverMount's CPU sensor)";
 
     /// <summary>How long a game stays detected while it is not in the foreground (alt-tab debounce).</summary>
     private const uint GameDebounceMs = 5000;
@@ -21,6 +23,7 @@ public sealed class SensorHub : IDisposable
     private readonly Func<double?> _ramUsedMb;
     private readonly Func<double?> _vramTotalMb;
     private readonly Func<Snapshot?> _windows;
+    private readonly Func<CpuSensorLink.Reading?> _cpuSensor;
     private readonly WindowsSensors? _windowsSensors;
     private readonly Lock _lock = new();
 
@@ -35,17 +38,20 @@ public sealed class SensorHub : IDisposable
         _frames = new FrameTimeSampler();
         _windowsSensors = new WindowsSensors();
         _windows = _windowsSensors.Sample;
+        _cpuSensor = CpuSensorLink.TryRead;
     }
 
     /// <param name="windows">Windows' own sensors (tests pass none, so only the given blobs count).</param>
+    /// <param name="cpuSensor">OverMount's own CPU sensor helper (<see cref="CpuSensorLink"/>).</param>
     internal SensorHub(SensorOptions options, Func<double?> ramTotalMb, Func<double?> ramUsedMb, Func<double?> vramTotalMb,
-        Func<Snapshot?>? windows = null)
+        Func<Snapshot?>? windows = null, Func<CpuSensorLink.Reading?>? cpuSensor = null)
     {
         _options = options;
         _ramTotalMb = ramTotalMb;
         _ramUsedMb = ramUsedMb;
         _vramTotalMb = vramTotalMb;
         _windows = windows ?? (() => null);
+        _cpuSensor = cpuSensor ?? (() => null);
     }
 
     /// <summary>Reads all sources now. Never throws.</summary>
@@ -94,11 +100,17 @@ public sealed class SensorHub : IDisposable
         Snapshot? w;
         try { w = _windows(); }
         catch (Exception) { w = null; } // Windows' counters are a bonus; never let them break a sample
+        CpuSensorLink.Reading? helper;
+        try { helper = _cpuSensor(); }
+        catch (Exception) { helper = null; }
+
+        double? cpuTemp = h?.CpuTemp ?? m?.CpuTemp ?? helper?.CpuTemp;
+        if (cpuTemp is null) hints.Insert(0, HintCpuTemp); // the most useful thing to fix, so it's first (tray tooltip)
 
         return new Snapshot
         {
-            CpuTemp = h?.CpuTemp ?? m?.CpuTemp,
-            CpuPower = h?.CpuPower ?? m?.CpuPower ?? w?.CpuPower,
+            CpuTemp = cpuTemp,
+            CpuPower = h?.CpuPower ?? m?.CpuPower ?? helper?.CpuPower ?? w?.CpuPower,
             CpuLoad = h?.CpuLoad ?? m?.CpuLoad ?? w?.CpuLoad,
             GpuTemp = h?.GpuTemp ?? m?.GpuTemp ?? w?.GpuTemp,
             GpuPower = h?.GpuPower ?? m?.GpuPower ?? w?.GpuPower,

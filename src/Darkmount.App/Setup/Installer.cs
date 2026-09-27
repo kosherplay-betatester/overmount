@@ -101,6 +101,7 @@ public static class Installer
     public static void Uninstall(bool removeUserData)
     {
         CloseRunningInstance(TimeSpan.FromSeconds(20));
+        if (CpuSensorSetup.IsSetUp) CpuSensorSetup.Remove(); // the helper lives in Program Files: one permission prompt
         foreach (var link in new[] { StartMenuShortcut, DesktopShortcut })
             if (File.Exists(link)) File.Delete(link);
         Autostart.Set(false, InstalledExe);

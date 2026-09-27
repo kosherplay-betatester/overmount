@@ -11,7 +11,18 @@ public enum SceneEffect
     Heartbeat, Police, Scanner, ColorCycle, CpuTemperature, PerformanceMeter, TypingHeatmap, AudioPulse, AudioSpectrum,
     Lava, Candy, ScreenSync, PerKey,
     Starfield, Fireworks, Comet, Lightning, Glitch, Radar, Disco, Snow, Bubbles, Embers, Fireflies,
+    KeyLightning, LaserTyping, RainbowTyping, ComboMeter, KeySparks, BeatRings, Waveform, ClubLights, ScreenMood,
+    ScreenFlash, MouseSpotlight,
 }
+
+/// <summary>One key press: Dark Mount key id and the <see cref="SceneContext.Seconds"/> it happened.</summary>
+public readonly record struct KeyPress(int KeyId, double At);
+
+/// <summary>A mouse click at a position across all screens (0..1), 0 = left, 1 = right, 2 = middle button.</summary>
+public readonly record struct MouseClick(double X, double Y, int Button, double At);
+
+/// <summary>A sudden brightening of the screen (explosion, muzzle flash, lightning) and the screen's colour then.</summary>
+public readonly record struct ScreenFlash(double At, LampColor Color, double Strength);
 
 /// <summary>How <see cref="LightLayer.Colors"/> is read: Single = [0], Dual = [0] and [1], Gradient = all (2..7 stops, evenly spaced).</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<SceneColorMode>))]
@@ -143,4 +154,20 @@ public sealed class SceneContext
 
     public int ScreenGridWidth { get; init; }
     public int ScreenGridHeight { get; init; }
+
+    /// <summary>Recent key presses, oldest first (for effects that follow the order and speed of typing).</summary>
+    public IReadOnlyList<KeyPress> KeyPresses { get; init; } = [];
+
+    /// <summary>Recent music beats (<see cref="Seconds"/>, oldest first), detected from the bass.</summary>
+    public IReadOnlyList<double> BeatTimes { get; init; } = [];
+
+    /// <summary>The mouse pointer across all screens, 0..1; null when unknown.</summary>
+    public double? MouseX { get; init; }
+    public double? MouseY { get; init; }
+
+    /// <summary>Recent mouse clicks, oldest first.</summary>
+    public IReadOnlyList<MouseClick> MouseClicks { get; init; } = [];
+
+    /// <summary>Recent screen flashes, oldest first.</summary>
+    public IReadOnlyList<ScreenFlash> ScreenFlashes { get; init; } = [];
 }

@@ -76,4 +76,16 @@ public class CompanionsTests
         Assert.False(Companions.NeedsAttention(notYet, afterburnerAutostarts: true));
         Assert.True(Companions.NeedsAttention(notYet, afterburnerAutostarts: false));
     }
+
+    [Fact]
+    public void Only_program_files_counts_as_trusted_for_elevated_tasks()
+    {
+        var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        Assert.True(Companions.IsUnderProgramFiles(Path.Combine(pf86, "MSI Afterburner")));
+        Assert.True(Companions.IsUnderProgramFiles(Path.Combine(pf, "HWiNFO64") + "\\"));
+        Assert.False(Companions.IsUnderProgramFiles(pf + @" Evil\Afterburner"));                    // a look-alike folder name
+        Assert.False(Companions.IsUnderProgramFiles(Path.Combine(pf, "..", "Users", "x", "Fake")));     // walks back out
+        Assert.False(Companions.IsUnderProgramFiles(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)));
+    }
 }

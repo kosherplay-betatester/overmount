@@ -110,7 +110,9 @@ public class LightingSceneTests
         Assert.True(SceneEffects.Get(SceneEffect.CpuTemperature).NeedsSensors);
         Assert.True(SceneEffects.Get(SceneEffect.AudioSpectrum).NeedsAudio);
         Assert.True(SceneEffects.Get(SceneEffect.ScreenSync).NeedsScreen);
-        Assert.Single(SceneEffects.All, i => i.NeedsScreen);
+        Assert.Equal([SceneEffect.ScreenSync, SceneEffect.ScreenMood, SceneEffect.ScreenFlash],
+            SceneEffects.All.Where(i => i.NeedsScreen).Select(i => i.Effect));
+        Assert.Equal([SceneEffect.MouseSpotlight], SceneEffects.All.Where(i => i.NeedsMouse).Select(i => i.Effect));
         Assert.True(SceneEffects.Get(SceneEffect.Static).IsOpaque);
     }
 
@@ -555,7 +557,8 @@ public class LightingSceneTests
                 Assert.InRange(layer.Speed, 1, 10);
                 Assert.InRange(layer.Brightness, 1, 100);
             }
-            var frames = new[] { 0.02, 0.9, 1.7, 3.3 }.Select(t => SceneRenderer.Render(p, FullCtx(t))).ToList();
+            // The demo feed types, plays music, moves the mouse and flashes the screen, so reactive presets light up too.
+            var frames = new[] { 0.02, 0.9, 1.7, 3.3 }.Select(t => SceneRenderer.Render(p, SceneDemo.Context(t + 5, Board))).ToList();
             Assert.All(frames, colors => Assert.Equal(201, colors.Count));
             Assert.True(frames.Any(colors => colors.Values.Any(c => Max(c) > 40)), $"{p.Name} stays dark"); // Police strobes
         }
@@ -603,6 +606,61 @@ public class LightingSceneTests
         // Every effect except the special ones appears in at least one preset.
         var used = ScenePresets.All.SelectMany(p => p.Layers).Select(l => l.Effect).ToHashSet();
         Assert.All(Enum.GetValues<SceneEffect>().Where(e => e is not SceneEffect.PerKey), e => Assert.Contains(e, used));
+    }
+
+    [Fact]
+    public void Combo_meter_fills_further_the_faster_you_type()
+    {
+        var scene = Scene(SceneEffects.CreateLayer(SceneEffect.ComboMeter));
+        int LitEdges(int presses)
+        {
+            var ctx = new SceneContext
+            {
+                Seconds = 10, Lamps = Board,
+                KeyPresses = [.. Enumerable.Range(0, presses).Select(i => new KeyPress(KeyW, 10 - i * 0.15))],
+            };
+            var frame = SceneRenderer.Render(scene, ctx);
+            return Board.Count(l => !l.IsKey && Max(frame[l.LampId]) > 60);
+        }
+        Assert.True(LitEdges(0) < LitEdges(4), "a few presses fill some of the bar");
+        Assert.True(LitEdges(4) < LitEdges(12), "fast typing fills more");
+    }
+
+    [Fact]
+    public void Mouse_spotlight_is_brightest_under_the_pointer_and_off_without_a_mouse()
+    {
+        var scene = Scene(SceneEffects.CreateLayer(SceneEffect.MouseSpotlight));
+        var ctx = new SceneContext { Seconds = 3, Lamps = Board, MouseX = 0.1, MouseY = 0.5 };
+        var frame = SceneRenderer.Render(scene, ctx);
+        var near = Board.Where(l => l.IsKey).MinBy(l => Math.Abs(l.X - 0.1) + Math.Abs(l.Y - 0.5));
+        var far = Board.Where(l => l.IsKey).MaxBy(l => Math.Abs(l.X - 0.1));
+        Assert.True(Max(frame[near.LampId]) > 150);
+        Assert.True(Max(frame[far.LampId]) < 30);
+        Assert.All(SceneRenderer.Render(scene, Ctx(3)).Values, c => Assert.True(Max(c) == 0)); // no pointer known: dark
+    }
+
+    [Fact]
+    public void Keystroke_lightning_links_the_last_two_keys()
+    {
+        var scene = Scene(SceneEffects.CreateLayer(SceneEffect.KeyLightning));
+        var ctx = new SceneContext
+        {
+            Seconds = 5, Lamps = Board, KeyPresses = [new KeyPress(KeyA, 4.9), new KeyPress(KeyIds.Right, 4.95)],
+        };
+        var frame = SceneRenderer.Render(scene, ctx);
+        Assert.True(Max(frame[LampOf(KeyA)]) > 150 && Max(frame[LampOf(KeyIds.Right)]) > 150);
+        Assert.True(Board.Count(l => l.IsKey && Max(frame[l.LampId]) > 80) > 6, "an arc crosses the keys in between");
+    }
+
+    [Fact]
+    public void Demo_feed_types_plays_music_and_moves_the_mouse()
+    {
+        var ctx = SceneDemo.Context(12.3, Board);
+        Assert.NotEmpty(ctx.KeyPresses);
+        Assert.NotEmpty(ctx.BeatTimes);
+        Assert.NotNull(ctx.MouseX);
+        Assert.Equal(ctx.ScreenGridWidth * ctx.ScreenGridHeight, ctx.ScreenGrid.Count);
+        Assert.All(ctx.KeyPresses, p => Assert.True(p.At <= 12.3));
     }
 
     [Fact]

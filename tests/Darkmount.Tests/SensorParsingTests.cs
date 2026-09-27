@@ -329,7 +329,8 @@ public class SensorParsingTests(ITestOutputHelper output)
         using var hub = TestHub();
         var s = hub.Sample(null, null, null, 0, 1000);
         Assert.Null(s.CpuTemp);
-        Assert.Equal(3, s.Hints.Count);
+        Assert.Equal(4, s.Hints.Count);
+        Assert.Equal(SensorHub.HintCpuTemp, s.Hints[0]); // the most useful fix comes first (tray tooltip)
         Assert.Contains(s.Hints, h => h.Contains("HWiNFO"));
         Assert.Contains(s.Hints, h => h.Contains("Afterburner"));
         Assert.Contains(s.Hints, h => h.Contains("RivaTuner"));
@@ -347,7 +348,23 @@ public class SensorParsingTests(ITestOutputHelper output)
         Assert.Equal(141, s.Fps);
         Assert.Equal(70, s.FpsLow);
         Assert.Equal("0.1% low", s.FpsLowLabel);
-        Assert.Single(s.Hints); // only HWiNFO
+        Assert.Equal([SensorHub.HintCpuTemp, SensorHub.HintHwInfo], s.Hints); // no CPU temperature in this blob
+    }
+
+    [Fact]
+    public void Hub_uses_overmounts_own_cpu_sensor_when_monitoring_apps_have_no_cpu_temperature()
+    {
+        var own = new CpuSensorLink.Reading(63.5, 88, 1000, CpuSensorLink.Version);
+        using var hub = new SensorHub(new SensorOptions(), () => 32000, () => 8000, () => 12000, cpuSensor: () => own);
+
+        var alone = hub.Sample(null, Mahm(M("GPU temperature", 55)), null, 0, 1000);
+        Assert.Equal(63.5, alone.CpuTemp);
+        Assert.Equal(88, alone.CpuPower);
+        Assert.DoesNotContain(SensorHub.HintCpuTemp, alone.Hints);
+
+        var withAfterburner = hub.Sample(null, Mahm(M("CPU temperature", 70), M("CPU power", 95)), null, 0, 1000);
+        Assert.Equal(70, withAfterburner.CpuTemp); // Afterburner first, as configured by the user
+        Assert.Equal(95, withAfterburner.CpuPower);
     }
 
     [Fact]
