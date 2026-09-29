@@ -67,6 +67,85 @@ public static class ScenePresets
                 Fx(SceneEffect.ColorCycle, Rainbow, speed: 3)),
         ]),
 
+        // Calm lighting for normal typing: a static colour chosen for the room's light, and a gentle colour change on
+        // the keys you press (no flashing). Dark-room scenes keep the edges dimmer than the keys.
+        ("Everyday typing", [
+            Scene("Night owl", "Dark room: warm amber keys at low brightness; pressed keys glow soft cream.",
+                Fx(SceneEffect.SoftPress, ["FFE6C0"], speed: 4, name: "Soft press"),
+                Fx(SceneEffect.Static, ["FFA040"], brightness: 10, on: On.Edges, name: "Dim edges"),
+                Fx(SceneEffect.Static, ["FFA040"], brightness: 35, on: On.Keys, name: "Amber keys")),
+
+            Scene("Candlelight", "Dark room: a deep candle-orange glow, pressed keys flicker up to gold.",
+                Fx(SceneEffect.SoftPress, ["FFC04D"], speed: 4, name: "Soft press"),
+                Fx(SceneEffect.Static, ["FF6A1A"], brightness: 8, on: On.Edges, name: "Dim edges"),
+                Fx(SceneEffect.Static, ["FF6A1A"], brightness: 28, on: On.Keys, name: "Candle keys")),
+
+            Scene("Midnight blue", "Dark room: calm navy keys; pressed keys turn soft cyan.",
+                Fx(SceneEffect.SoftPress, ["5FD8FF"], speed: 4, name: "Soft press"),
+                Fx(SceneEffect.Static, ["1030A0"], brightness: 15, on: On.Edges, name: "Dim edges"),
+                Fx(SceneEffect.Static, ["1030A0"], brightness: 45, on: On.Keys, name: "Navy keys")),
+
+            Scene("Red night vision", "Pitch-dark room: faint red keys that keep your eyes adjusted, a brighter red where you type.",
+                Fx(SceneEffect.SoftPress, ["FF2020"], speed: 4, name: "Soft press"),
+                Fx(SceneEffect.Static, ["FF0000"], brightness: 18, on: On.Keys, name: "Red keys"),
+                Fx(SceneEffect.Static, ["000000"], on: On.Edges, name: "Edges off")),
+
+            Scene("Wake on type", "Dark room: the keyboard rests very dim and softly brightens while you type.",
+                Fx(SceneEffect.WakeOnType, ["FFB070"], speed: 5)),
+
+            Scene("Lo-fi study", "Evening: a soft violet-to-peach gradient, pressed keys glow warm.",
+                Fx(SceneEffect.SoftPress, ["FFE4D6"], speed: 4, name: "Soft press"),
+                Fx(SceneEffect.Static, ["3A1C71", "D76D77", "FFAF7B"], SceneDirection.Right, brightness: 40, name: "Gradient")),
+
+            Scene("Focus mode", "Minimal: dim white keys, edges off, a be quiet! orange touch on the key you press.",
+                Fx(SceneEffect.SoftPress, ["FF8A00"], speed: 5, name: "Soft press"),
+                Fx(SceneEffect.Static, ["FFFFFF"], brightness: 20, on: On.Keys, name: "White keys"),
+                Fx(SceneEffect.Static, ["000000"], on: On.Edges, name: "Edges off")),
+
+            Scene("Daylight", "Bright room: clean white keys, pressed keys turn a crisp cyan.",
+                Fx(SceneEffect.SoftPress, ["00C8FF"], speed: 5, name: "Soft press"),
+                Fx(SceneEffect.Static, ["FFFFFF"], brightness: 95, name: "White")),
+
+            Scene("Arctic", "Bright room: icy blue keys that flash white where you type.",
+                Fx(SceneEffect.SoftPress, ["FFFFFF"], speed: 5, name: "Soft press"),
+                Fx(SceneEffect.Static, ["9FE6FF"], brightness: 90, name: "Ice blue")),
+
+            Scene("Mint fresh", "Bright room: cool mint keys, pressed keys go white.",
+                Fx(SceneEffect.SoftPress, ["FFFFFF"], speed: 5, name: "Soft press"),
+                Fx(SceneEffect.Static, ["7DFFC4"], brightness: 85, name: "Mint")),
+
+            Scene("Sunny day", "Bright room: warm sunlight keys with an orange touch on each press.",
+                Fx(SceneEffect.SoftPress, ["FF8A00"], speed: 5, name: "Soft press"),
+                Fx(SceneEffect.Static, ["FFE9A8"], brightness: 90, name: "Sunlight")),
+
+            Scene("Office pro", "Neutral white keys, be quiet! orange edges, orange on the key you press.",
+                Fx(SceneEffect.SoftPress, ["FF2800"], speed: 5, name: "Soft press"),
+                Fx(SceneEffect.Static, ["FF2800"], brightness: 50, on: On.Edges, name: "Orange edges"),
+                Fx(SceneEffect.Static, ["F2F4FF"], brightness: 80, on: On.Keys, name: "White keys")),
+
+            Scene("Ocean calm", "Deep blue to turquoise, pressed keys foam white.",
+                Fx(SceneEffect.SoftPress, ["E0FFFF"], speed: 4, name: "Soft press"),
+                Fx(SceneEffect.Static, ["003B6F", "0077B6", "00B4D8"], SceneDirection.Right, brightness: 60, name: "Ocean")),
+
+            Scene("Forest walk", "Mossy greens rising up the keys, pressed keys glow spring-green.",
+                Fx(SceneEffect.SoftPress, ["E6FFB0"], speed: 4, name: "Soft press"),
+                Fx(SceneEffect.Static, ["0B3D20", "1E6B3A", "4CAF50"], SceneDirection.Up, brightness: 55, name: "Forest")),
+
+            Scene("Two-tone", "Cyan on the left melting into violet on the right; pressed keys turn white.",
+                Fx(SceneEffect.SoftPress, ["FFFFFF"], speed: 5, name: "Soft press"),
+                Fx(SceneEffect.Static, ["00E5FF", "B000FF"], SceneDirection.Right, brightness: 70, name: "Two tones")),
+
+            Scene("Pastel pop", "Soft pastel keys; every key you press blooms in its own pastel colour.",
+                Fx(SceneEffect.SoftPress, ["FF8AD8", "8AE8FF", "FFE08A", "B89AFF"], speed: 4, name: "Pastel presses"),
+                Fx(SceneEffect.Static, ["FFD6E8", "D6F0FF", "E8FFD6"], SceneDirection.Right, brightness: 70, name: "Pastels")),
+
+            Scene("Chameleon", "Calm teal while you think, drifting to magenta as you type faster.",
+                Fx(SceneEffect.TypingMood, ["00A0C8", "C040FF"], speed: 5)),
+
+            Scene("Calm to focus", "Blue at rest, violet when you get going, pink in full flow.",
+                Fx(SceneEffect.TypingMood, ["2E6BFF", "7B5CFF", "FF4FD8"], speed: 5)),
+        ]),
+
         ("Neon & synth", [
             Scene("Cyberpunk", "Hot pink fading into electric cyan, with white flashes under your fingers.",
                 Fx(SceneEffect.Reactive, ["FFFFFF"], speed: 6, on: On.Keys, name: "Key flash"),

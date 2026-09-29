@@ -359,4 +359,77 @@ internal static partial class SceneShaders
             return best < 0.01 ? Rgba.Clear : new Rgba(color, best);
         };
     }
+
+    // ------------------------------------------------------------------ calm typing
+
+    /// <summary>
+    /// The key you press eases into its press colour, holds a moment and glides back; its neighbours glow faintly. Made
+    /// to sit on a static colour for everyday typing (Gradient: each key gets its own colour from the list).
+    /// </summary>
+    static Shader SoftPress(LayerFrame f)
+    {
+        // The engine keeps 4 s of presses (SceneContext.KeyPresses): every fade here ends before that, even at speed 1.
+        double now = f.Seconds, hold = 0.12, fade = Math.Min(3.5, 1.4 / f.SpeedFactor);
+        var pal = f.Palette;
+        var lit = new List<(int Key, double X, double Y, double Level, Rgbf C)>();
+        foreach (var press in f.Ctx.KeyPresses)
+        {
+            double age = now - press.At;
+            if (age < 0 || age > hold + fade || !f.Scene.TryGetKey(press.KeyId, out var k)) continue;
+            double level = 1 - SmoothStep(hold, hold + fade, age);
+            var c = pal.Count == 1 ? pal.First : pal[(int)(Noise.Hash(press.KeyId, 5, 1801) * pal.Count)];
+            lit.Add((press.KeyId, k.X * Aspect, k.Y, level, c));
+        }
+        if (lit.Count == 0) return (in Pixel _) => Rgba.Clear;
+        return (in Pixel p) =>
+        {
+            if (!p.IsKey) return Rgba.Clear;
+            double x = p.X * Aspect, best = 0;
+            Rgbf color = Rgbf.Black;
+            foreach (var l in lit)
+            {
+                double v = p.KeyId == l.Key ? l.Level
+                    : 0.22 * l.Level * Math.Exp(-((x - l.X) * (x - l.X) + (p.Y - l.Y) * (p.Y - l.Y)) / 0.03); // reaches the next key only
+                if (v > best) { best = v; color = l.C; }
+            }
+            return best < 0.01 ? Rgba.Clear : new Rgba(color, best);
+        };
+    }
+
+    /// <summary>
+    /// For a dark room: the keyboard rests very dim and softly brightens while you type, easing back when you stop
+    /// (Gradient: the colours laid out left to right).
+    /// </summary>
+    static Shader WakeOnType(LayerFrame f)
+    {
+        // Bright right after a press, easing back to rest within the 4 s of presses the engine keeps (so it never snaps).
+        double now = f.Seconds, awake = 0, hold = 0.6, fade = Math.Min(3.2, 1.6 / f.SpeedFactor);
+        foreach (var press in f.Ctx.KeyPresses)
+        {
+            double age = now - press.At;
+            if (age >= 0) awake = Math.Max(awake, 1 - SmoothStep(hold, hold + fade, age));
+        }
+        double level = 0.12 + 0.88 * SmoothStep(0, 1, awake);
+        var pal = f.Palette;
+        if (pal.Count == 1) { var c = Opaque(pal.First * level); return (in Pixel _) => c; }
+        return (in Pixel p) => Opaque(pal.Sample(p.X) * level);
+    }
+
+    /// <summary>
+    /// The whole keyboard eases from a calm colour (the first) towards an active one (the last) the more you type, and
+    /// drifts back when you pause. Subtle: no flashes, just the mood of your typing.
+    /// </summary>
+    static Shader TypingMood(LayerFrame f)
+    {
+        double now = f.Seconds, energy = 0;
+        foreach (var press in f.Ctx.KeyPresses)
+        {
+            double age = now - press.At;
+            if (age >= 0 && age < 4) energy += Math.Exp(-age / 1.2) * (1 - SmoothStep(3, 4, age)); // gone smoothly by 4 s
+        }
+        double t = SmoothStep(0, 1, Clamp01(energy / (6 / f.SpeedFactor)));
+        var pal = f.Palette;
+        var c = Opaque(pal.Count == 1 ? pal.First * (0.35 + 0.65 * t) : pal.Sample(t));
+        return (in Pixel _) => c;
+    }
 }

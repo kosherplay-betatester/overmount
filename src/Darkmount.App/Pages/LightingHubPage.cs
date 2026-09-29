@@ -121,7 +121,9 @@ public sealed class LightingHubPage : Ui.Page
         finally { _busy = false; }
     }
 
-    void ShowSource(LightingSource source)
+    void ShowSource(LightingSource source) => Ui.Batch(this, () => ShowSourceCore(source));
+
+    void ShowSourceCore(LightingSource source)
     {
         _source = source;
         _studioTile.Selected = source == LightingSource.Studio;

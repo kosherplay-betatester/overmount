@@ -174,6 +174,15 @@ public static class SceneEffects
         new(SceneEffect.MouseSpotlight, "Mouse spotlight", "The keyboard as a mini-map of your screens: a spotlight follows the mouse and clicks send ripples (Dual: left, right click).",
             AllModes, NoDirections, true, false, false, false, false)
             { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["00E5FF", "FF00C8"], NeedsMouse = true },
+        new(SceneEffect.SoftPress, "Soft press", "The key you press eases into another colour and glides back; its neighbours glow faintly. Lovely on a static colour (Gradient: a colour per key).",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColors = ["FFFFFF"] },
+        new(SceneEffect.WakeOnType, "Wake on type", "For a dark room: the keyboard rests very dim and softly brightens while you type.",
+            AllModes, NoDirections, true, true, false, false, true)
+            { DefaultColors = ["FFB070"] },
+        new(SceneEffect.TypingMood, "Typing mood", "The whole keyboard slowly shifts from a calm colour to an active one the more you type.",
+            [SceneColorMode.Dual, SceneColorMode.Gradient, SceneColorMode.Single], NoDirections, true, true, false, false, true)
+            { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["00A0C8", "C040FF"] },
         new(SceneEffect.PerKey, "Per-key colours", "Paint every key and edge LED its own colour, like IO Center's per-key lighting. " +
             "Unpainted lamps show the layers below.", NoModes, NoDirections, false, false, false, false, false),
     ];

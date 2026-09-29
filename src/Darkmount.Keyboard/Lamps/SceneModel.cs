@@ -12,7 +12,7 @@ public enum SceneEffect
     Lava, Candy, ScreenSync, PerKey,
     Starfield, Fireworks, Comet, Lightning, Glitch, Radar, Disco, Snow, Bubbles, Embers, Fireflies,
     KeyLightning, LaserTyping, RainbowTyping, ComboMeter, KeySparks, BeatRings, Waveform, ClubLights, ScreenMood,
-    ScreenFlash, MouseSpotlight,
+    ScreenFlash, MouseSpotlight, SoftPress, WakeOnType, TypingMood,
 }
 
 /// <summary>One key press: Dark Mount key id and the <see cref="SceneContext.Seconds"/> it happened.</summary>

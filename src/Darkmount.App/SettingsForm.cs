@@ -168,15 +168,14 @@ public sealed class SettingsForm : Form
     void Select(int index)
     {
         var page = _pages[index].Page;
-        _content.SuspendLayout();
-        try
+        // One layout pass for the whole switch (Batch resumes even if a page's show/hide handler fails).
+        Ui.Batch(_content, () =>
         {
             foreach (var (_, other) in _pages)
                 if (other != page) other.Visible = false;
             _content.AutoScrollPosition = Point.Empty;
             page.Visible = true;
-        }
-        finally { _content.ResumeLayout(true); } // a page's show/hide handler failing must not freeze the window's layout
+        });
         for (int i = 0; i < _pages.Count; i++)
         {
             _pages[i].Button.BackColor = i == index ? Ui.PanelHover : Ui.Panel;

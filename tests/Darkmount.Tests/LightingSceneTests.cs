@@ -663,6 +663,53 @@ public class LightingSceneTests
         Assert.All(ctx.KeyPresses, p => Assert.True(p.At <= 12.3));
     }
 
+    static SceneContext Typing(double now, params (int Key, double At)[] presses) =>
+        new() { Seconds = now, Lamps = Board, KeyPresses = [.. presses.Select(p => new KeyPress(p.Key, p.At))] };
+
+    [Fact]
+    public void Soft_press_lights_the_pressed_key_and_only_hints_at_its_neighbours()
+    {
+        var scene = Scene(Layer(SceneEffect.SoftPress, "FFFFFF"));
+        var frame = SceneRenderer.Render(scene, Typing(10, (KeyS, 9.95)));
+        Assert.True(Max(frame[LampOf(KeyS)]) > 230);
+        Assert.InRange(Max(frame[LampOf(KeyA)]), 1, 90);                       // a faint glow next door
+        Assert.True(Max(frame[LampOf(KeyIds.Esc)]) == 0);
+        Assert.All(SceneRenderer.Render(scene, Typing(15, (KeyS, 9.95))).Values, c => Assert.Equal(0, Max(c))); // eased back
+    }
+
+    [Fact]
+    public void Wake_on_type_rests_dim_and_brightens_while_typing()
+    {
+        var scene = Scene(Layer(SceneEffect.WakeOnType, "FFFFFF"));
+        int idle = Max(SceneRenderer.Render(scene, Typing(10))[LampOf(KeyW)]);
+        int typing = Max(SceneRenderer.Render(scene, Typing(10, (KeyW, 9.9), (KeyA, 9.95)))[LampOf(KeyW)]);
+        Assert.InRange(idle, 20, 45);
+        Assert.True(typing > 200, $"{typing}");
+    }
+
+    [Theory]
+    [InlineData(SceneEffect.WakeOnType)] [InlineData(SceneEffect.SoftPress)] [InlineData(SceneEffect.TypingMood)]
+    public void Calm_typing_effects_have_eased_back_before_the_press_history_ends(SceneEffect effect)
+    {
+        // The engine keeps 4 s of key presses: at the slowest speed the fade must be over by then, or it would snap.
+        var layer = SceneEffects.CreateLayer(effect);
+        layer.Speed = 1;
+        var scene = Scene(layer);
+        var rest = SceneRenderer.Render(scene, Typing(20))[LampOf(KeyW)];
+        var justBeforeDrop = SceneRenderer.Render(scene, Typing(20, (KeyW, 20 - 3.95)))[LampOf(KeyW)];
+        Assert.True(Math.Abs(Max(justBeforeDrop) - Max(rest)) <= 3, $"{effect}: {justBeforeDrop} vs resting {rest}");
+    }
+
+    [Fact]
+    public void Typing_mood_moves_from_the_calm_colour_to_the_active_one()
+    {
+        var scene = Scene(new LightLayer { Effect = SceneEffect.TypingMood, ColorMode = SceneColorMode.Dual, Colors = ["0000FF", "FF0000"] });
+        var calm = SceneRenderer.Render(scene, Typing(10))[LampOf(KeyW)];
+        var busy = SceneRenderer.Render(scene, Typing(10, [.. Enumerable.Range(0, 20).Select(i => (KeyW, 10 - i * 0.12))]))[LampOf(KeyW)];
+        Assert.True(calm.B > 200 && calm.R < 30);
+        Assert.True(busy.R > 200 && busy.B < 60);
+    }
+
     [Fact]
     public void Presets_are_independent_copies()
     {

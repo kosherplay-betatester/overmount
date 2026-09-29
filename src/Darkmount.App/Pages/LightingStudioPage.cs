@@ -32,7 +32,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     readonly ListBox _layers = new() { Width = 260, Height = 210, Font = Ui.Body, BackColor = Ui.Panel, ForeColor = Ui.Text, BorderStyle = BorderStyle.None };
     readonly KeyboardView _view = new() { Size = new Size(920, 340), MultiSelect = true, Margin = new Padding(0, 4, 0, 4) };
-    readonly FlowLayoutPanel _effects = new() { AutoSize = true, WrapContents = true, MaximumSize = new Size(900, 0) };
+    readonly ChipPicker _effects = new(wrapWidth: 900);
     readonly ComboBox _colorMode = Ui.Combo<SceneColorMode>(160), _direction = Ui.Combo<SceneDirection>(170);
     readonly ComboBox _numpad = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Font = Ui.Body };
     readonly FlowLayoutPanel _colors = new() { AutoSize = true, WrapContents = false };
@@ -43,7 +43,6 @@ public sealed class LightingStudioPage : Ui.Page
     readonly Label _effectInfo = Ui.Note("", 880);
     readonly Label _selectHint = Ui.Note("", 880);
     readonly Label _status = Ui.Note("", 880);
-    readonly Dictionary<SceneEffect, Button> _effectButtons = [];
     readonly List<Control> _brushButtons = [];
 
     // Overlays and behaviour
@@ -81,14 +80,10 @@ public sealed class LightingStudioPage : Ui.Page
                 Text = category.ToUpperInvariant(), AutoSize = true, ForeColor = Ui.Dim, Font = new Font("Segoe UI Semibold", 8.5f),
                 Margin = new Padding(2, 8, 0, 2), UseMnemonic = false,
             });
-            var row = new FlowLayoutPanel { AutoSize = true, WrapContents = true, MaximumSize = new Size(1000, 0), Margin = new Padding(0) };
-            foreach (var preset in scenes)
-            {
-                var b = Ui.Button(preset.Name, (_, _) => LoadPreset(preset));
-                b.MinimumSize = new Size(124, 34);
-                new ToolTip().SetToolTip(b, preset.Description);
-                row.Controls.Add(b);
-            }
+            // One drawn control per category instead of a Button per preset: the page appears several times faster.
+            var row = new ChipPicker(wrapWidth: 1000, minChipWidth: 124) { Margin = new Padding(0, 0, 0, 2) };
+            row.SetChips(scenes.Select(p => new ChipPicker.Chip(p.Name, p.Description, p)));
+            row.ChipClicked += chip => LoadPreset((LightingScene)chip.Tag!);
             presets.Controls.Add(row);
         }
         Heading("Presets");
@@ -141,14 +136,8 @@ public sealed class LightingStudioPage : Ui.Page
         _paintRow = _palette;
         Row("Paint colour", _paintRow);
 
-        foreach (var info in SceneEffects.All.Where(i => i.Effect != SceneEffect.PerKey))
-        {
-            var b = Ui.Button(info.Name, (_, _) => SetEffect(info.Effect));
-            b.MinimumSize = new Size(112, 32);
-            new ToolTip().SetToolTip(b, info.Description);
-            _effectButtons[info.Effect] = b;
-            _effects.Controls.Add(b);
-        }
+        _effects.SetChips(SceneEffects.All.Where(i => i.Effect != SceneEffect.PerKey).Select(i => new ChipPicker.Chip(i.Name, i.Description, i.Effect)));
+        _effects.ChipClicked += chip => SetEffect((SceneEffect)chip.Tag!);
         Row("Effect", _effects);
         AddFull(_effectInfo);
         _colorsRow = Pair(_colorMode, _colors, Ui.Button("+", (_, _) => AddColor()), Ui.Button("−", (_, _) => RemoveColor()));
@@ -456,17 +445,15 @@ public sealed class LightingStudioPage : Ui.Page
         ShowLayer();
     }
 
-    void ShowLayer()
+    /// <summary>Shows the selected layer's settings; rows appear and disappear in one layout pass.</summary>
+    void ShowLayer() => Ui.Batch(this, ShowLayerCore);
+
+    void ShowLayerCore()
     {
         var l = Current;
         _loading = true;
         bool paint = l?.Effect == SceneEffect.PerKey;
-        foreach (var (effect, b) in _effectButtons)
-        {
-            bool on = l?.Effect == effect;
-            b.BackColor = on ? Ui.Accent : Ui.Panel;
-            b.ForeColor = on ? Color.Black : Ui.Text;
-        }
+        _effects.Selected = l?.Effect;
         SetRowVisible(_paintRow, paint);
         SetRowVisible(_effects, !paint);
         SetRowVisible(_colorsRow, !paint);

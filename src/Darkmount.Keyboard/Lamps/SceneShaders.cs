@@ -128,6 +128,9 @@ internal static partial class SceneShaders
         SceneEffect.ScreenMood => ScreenMood(f),
         SceneEffect.ScreenFlash => ScreenFlashes(f),
         SceneEffect.MouseSpotlight => MouseSpotlight(f),
+        SceneEffect.SoftPress => SoftPress(f),
+        SceneEffect.WakeOnType => WakeOnType(f),
+        SceneEffect.TypingMood => TypingMood(f),
         _ => (in Pixel _) => Rgba.Clear,
     };
 

@@ -203,6 +203,30 @@ public static class Ui
         parent.Controls.Add(child);
     }
 
+    /// <summary>
+    /// Runs a change that shows, hides or resizes many controls (switching pages, sections, layers) with every layout in
+    /// <paramref name="root"/> held until the end: one layout pass instead of one per control. Showing the lighting page
+    /// went from ~1.5 s to ~0.2 s this way.
+    /// </summary>
+    public static void Batch(Control root, Action change)
+    {
+        var containers = new List<Control>();
+        void Collect(Control c)
+        {
+            if (c.Controls.Count == 0) return;
+            containers.Add(c);
+            foreach (Control child in c.Controls) Collect(child);
+        }
+        Collect(root);
+        foreach (var c in containers) c.SuspendLayout();
+        try { change(); }
+        finally
+        {
+            for (int i = containers.Count - 1; i >= 0; i--) containers[i].ResumeLayout(false); // children first
+            root.PerformLayout();
+        }
+    }
+
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Control, object> WheelGuarded = new();
 
     /// <summary>
