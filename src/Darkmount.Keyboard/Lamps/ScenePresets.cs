@@ -144,6 +144,15 @@ public static class ScenePresets
 
             Scene("Calm to focus", "Blue at rest, violet when you get going, pink in full flow.",
                 Fx(SceneEffect.TypingMood, ["2E6BFF", "7B5CFF", "FF4FD8"], speed: 5)),
+
+            Scene("Day & night", "Follows your clock: warm and dim at night, a sunrise glow in the morning, clean white by day, amber in the evening.",
+                Fx(SceneEffect.SoftPress, ["FFFFFF"], speed: 4, brightness: 70, name: "Soft press"),
+                Fx(SceneEffect.DayNight, name: "Time of day")),
+
+            Scene("Writer's flow", "Warm paper-white keys; Space sends a soft wave, Enter a gentle burst, Backspace a quiet blink.",
+                Fx(SceneEffect.WordWaves, ["FFC98A", "FFE9C7", "FF7A5C"], speed: 3, brightness: 70, name: "Word waves"),
+                Fx(SceneEffect.Static, ["FFB070"], brightness: 12, on: On.Edges, name: "Dim edges"),
+                Fx(SceneEffect.Static, ["FFD9A8"], brightness: 40, on: On.Keys, name: "Paper keys")),
         ]),
 
         ("Neon & synth", [
@@ -185,6 +194,11 @@ public static class ScenePresets
             Scene("Toxic", "Radioactive green and yellow plasma; keys flare yellow when pressed.",
                 Fx(SceneEffect.Reactive, ["F2FF00"], speed: 6, on: On.Keys, name: "Flare"),
                 Fx(SceneEffect.Plasma, ["1AFF00", "B6FF00", "FFF200", "00FF6A"], speed: 4, name: "Plasma")),
+
+            Scene("Neon snake", "A pink-to-cyan neon snake slithers along the path you type over a deep purple night.",
+                Fx(SceneEffect.TypingSnake, ["FF00C8", "B000FF", "00E5FF"], speed: 5, name: "Snake"),
+                Fx(SceneEffect.Comet, ["7000FF"], SceneDirection.Clockwise, speed: 3, on: On.Edges, name: "Frame comet"),
+                Fx(SceneEffect.Static, ["0A0018"], name: "Night")),
         ]),
 
         ("Space", [
@@ -205,6 +219,10 @@ public static class ScenePresets
 
             Scene("Starry night", "Stars twinkling on a deep navy sky.",
                 Fx(SceneEffect.Twinkle, ["FFF4D6", "050520"], speed: 3)),
+
+            Scene("Falling stars", "Every key you press drops a shooting star that bursts along the bottom edge, over a twinkling sky.",
+                Fx(SceneEffect.KeyDrops, ["FFFFFF", "FFE08A", "9FD8FF"], speed: 5, name: "Shooting stars"),
+                Fx(SceneEffect.Starfield, ["FFFFFF", "000008"], speed: 2, brightness: 70, name: "Sky")),
         ]),
 
         ("Nature", [
@@ -268,6 +286,10 @@ public static class ScenePresets
 
             Scene("Candy", "Pastel pink, sky blue, lemon and lilac flowing gently.",
                 Fx(SceneEffect.Candy, direction: SceneDirection.Right, speed: 4)),
+
+            Scene("Rain on glass", "Raindrops fall from every key you press and splash at the bottom, with a gentle rain behind.",
+                Fx(SceneEffect.KeyDrops, ["7FC8FF", "C8ECFF", "3C8CFF"], speed: 4, name: "Your drops"),
+                Fx(SceneEffect.Rain, ["5A8CFF", "020816"], speed: 3, brightness: 45, name: "Rain")),
         ]),
 
         ("Gaming", [
@@ -332,6 +354,11 @@ public static class ScenePresets
 
             Scene("Heartbeat", "A red lub-dub pulse spreading out from the centre.",
                 Fx(SceneEffect.Heartbeat, ["FF0020", "100002"], speed: 5)),
+
+            Scene("Snake arcade", "Retro arcade: a green pixel snake chases your keys around a dark board with a scanning frame.",
+                Fx(SceneEffect.TypingSnake, ["1AFF1A", "A8FF00", "FFFFFF"], speed: 6, name: "Snake"),
+                Fx(SceneEffect.Scanner, ["00FF40"], SceneDirection.Right, speed: 4, on: On.Edges, name: "Scanner"),
+                Fx(SceneEffect.Static, ["000800"], name: "Board")),
         ]),
 
         ("Party & music", [
@@ -379,6 +406,13 @@ public static class ScenePresets
 
             Scene("Tornado rainbow", "A rainbow spiral whirling around the middle of the keyboard.",
                 Fx(SceneEffect.Tornado, Rainbow, SceneDirection.Clockwise, speed: 5)),
+
+            Scene("VU meter", "Classic studio meters: every row is a level bar from the centre (bass at the bottom), the frame fills with the volume.",
+                Fx(SceneEffect.VuMeter)),
+
+            Scene("Studio monitor", "VU meters on the keys with a ring on every beat.",
+                Fx(SceneEffect.BeatRings, ["FFFFFF", "00E5FF"], speed: 5, brightness: 80, on: On.Keys, name: "Beat rings"),
+                Fx(SceneEffect.VuMeter, ["00B4FF", "B000FF", "FF00C8"], name: "Meters")),
         ]),
 
         ("Seasonal", [
@@ -404,6 +438,10 @@ public static class ScenePresets
             Scene("Spring bloom", "Blossom petals drifting over soft spring pastels.",
                 Fx(SceneEffect.Snow, ["FFD1E8", "FFFFFF", "C8F7C5"], speed: 3, name: "Petals"),
                 Fx(SceneEffect.Candy, ["B5EAD7", "FFDAC1", "E2F0CB", "C7CEEA"], SceneDirection.Right, speed: 2, brightness: 70, name: "Pastels")),
+
+            Scene("Easter eggs", "Pastel paint splashes on every key you press over soft spring colours.",
+                Fx(SceneEffect.PaintSplash, ["FFB3D9", "B3E5FF", "FFF3A3", "C8F7C5", "E0C3FF"], speed: 4, name: "Pastel paint"),
+                Fx(SceneEffect.Candy, ["B5EAD7", "FFDAC1", "E2F0CB", "C7CEEA"], SceneDirection.Right, speed: 2, brightness: 45, name: "Pastels")),
         ]),
 
         ("Typing", [
@@ -453,6 +491,27 @@ public static class ScenePresets
             Scene("Ink drop", "Dark blue ink spreading through a bright white keyboard with every key press.",
                 Fx(SceneEffect.Ripple, ["001A66", "0080FF"], speed: 4, name: "Ink"),
                 Fx(SceneEffect.Static, ["E8F4FF"], brightness: 80, name: "Paper")),
+
+            Scene("Paint party", "Every key you press splashes bright paint that dries and fades: the keyboard becomes a canvas.",
+                Fx(SceneEffect.PaintSplash, speed: 5, name: "Paint"),
+                Fx(SceneEffect.Static, ["0A0A0A"], name: "Canvas")),
+
+            Scene("Graffiti wall", "Neon spray-paint splashes over a dark concrete wall, with a slow colour wave on the frame.",
+                Fx(SceneEffect.PaintSplash, ["39FF14", "FF00C8", "00E5FF", "FFE600"], speed: 6, on: On.Keys, name: "Spray paint"),
+                Fx(SceneEffect.ColorWave, ["FF00C8", "00E5FF", "39FF14"], SceneDirection.Right, speed: 3, on: On.Edges, name: "Frame"),
+                Fx(SceneEffect.Static, ["101014"], on: On.Keys, name: "Concrete")),
+
+            Scene("Word waves", "Space sends a cyan wave sideways, Enter a violet burst and a flash of the frame, Backspace blinks red.",
+                Fx(SceneEffect.WordWaves, speed: 5, name: "Word waves"),
+                Fx(SceneEffect.Static, ["03060C"], name: "Dark")),
+
+            Scene("Typing snake", "A glowing snake follows the path of your typing from key to key and curls away when you stop.",
+                Fx(SceneEffect.TypingSnake, speed: 5, name: "Snake"),
+                Fx(SceneEffect.Static, ["020605"], name: "Dark")),
+
+            Scene("Drip drop", "Each key you press drips a drop of light that splashes on the bottom edge, over calm teal.",
+                Fx(SceneEffect.KeyDrops, speed: 5, name: "Drops"),
+                Fx(SceneEffect.Static, ["00303A"], brightness: 60, name: "Teal")),
         ]),
 
         ("System", [
@@ -466,6 +525,9 @@ public static class ScenePresets
                 Fx(SceneEffect.CpuTemperature, on: On.Edges, name: "CPU temperature"),
                 Fx(SceneEffect.Static, ["FFFFFF"], brightness: 40, on: On.Keys, name: "White keys")),
 
+            Scene("Circadian", "Easy on the eyes around the clock: the colour follows the time of day, typing wakes the keys a little.",
+                Fx(SceneEffect.SoftPress, ["FFF2E0"], speed: 3, brightness: 60, name: "Soft press"),
+                Fx(SceneEffect.DayNight, ["FF2A0A", "FF9A50", "E6EEFF", "FF6A1A"], brightness: 80, name: "Time of day")),
         ]),
 
         ("Screen & mouse", [

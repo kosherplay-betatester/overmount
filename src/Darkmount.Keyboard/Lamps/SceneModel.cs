@@ -13,6 +13,7 @@ public enum SceneEffect
     Starfield, Fireworks, Comet, Lightning, Glitch, Radar, Disco, Snow, Bubbles, Embers, Fireflies,
     KeyLightning, LaserTyping, RainbowTyping, ComboMeter, KeySparks, BeatRings, Waveform, ClubLights, ScreenMood,
     ScreenFlash, MouseSpotlight, SoftPress, WakeOnType, TypingMood,
+    PaintSplash, KeyDrops, WordWaves, TypingSnake, VuMeter, DayNight,
 }
 
 /// <summary>One key press: Dark Mount key id and the <see cref="SceneContext.Seconds"/> it happened.</summary>
@@ -75,9 +76,9 @@ public sealed class LightLayer
     public LightLayer Clone()
     {
         var copy = (LightLayer)MemberwiseClone();
-        copy.Colors = [.. Colors];
-        copy.Keys = [.. Keys];
-        copy.EdgeLamps = [.. EdgeLamps];
+        copy.Colors = [.. Colors ?? []];
+        copy.Keys = [.. Keys ?? []];
+        copy.EdgeLamps = [.. EdgeLamps ?? []];
         copy.KeyColors = new(KeyColors ?? []);
         copy.EdgeColors = new(EdgeColors ?? []);
         return copy;
@@ -170,4 +171,7 @@ public sealed class SceneContext
 
     /// <summary>Recent screen flashes, oldest first.</summary>
     public IReadOnlyList<ScreenFlash> ScreenFlashes { get; init; } = [];
+
+    /// <summary>Local time of day in hours (0 ≤ h &lt; 24); null when unknown (effects assume noon).</summary>
+    public double? LocalHours { get; init; }
 }

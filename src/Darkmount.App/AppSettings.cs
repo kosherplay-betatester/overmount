@@ -12,17 +12,18 @@ namespace Darkmount.App;
 public enum ScreenMode { Auto, Stats, Animation, NowPlaying, Clock, Network, FocusTimer, DockDefault }
 public enum ScreenKind { Stats, Animation, NowPlaying, Clock, Network, FocusTimer }
 
+/// <summary>Dock alerts. All off until the user turns them on (Settings → Alerts).</summary>
 public sealed class AlertSettings
 {
-    public bool CpuTempEnabled { get; set; } = true;
+    public bool CpuTempEnabled { get; set; }
     public double CpuTempMax { get; set; } = 90;
-    public bool GpuTempEnabled { get; set; } = true;
+    public bool GpuTempEnabled { get; set; }
     public double GpuTempMax { get; set; } = 85;
-    public bool RamEnabled { get; set; } = true;
+    public bool RamEnabled { get; set; }
     public double RamMaxPercent { get; set; } = 90;
-    public bool VramEnabled { get; set; } = true;
+    public bool VramEnabled { get; set; }
     public double VramMaxPercent { get; set; } = 95;
-    public bool FpsEnabled { get; set; } = true;
+    public bool FpsEnabled { get; set; }
     public double FpsMin { get; set; } = 30;
     public double FpsSeconds { get; set; } = 4;
     public double HoldSeconds { get; set; } = 10;
@@ -97,6 +98,18 @@ public sealed class AppSettings
 
     /// <summary>The assistant was offered again for OverMount's own CPU sensor (1.3), when CPU temperature was missing.</summary>
     public bool CpuSensorOffered { get; set; }
+
+    /// <summary>Alerts became opt-in (1.5). Older settings files had them on by default; they are switched off once.</summary>
+    public bool AlertsOptIn { get; set; }
+
+    /// <summary>Don't ask at start to close IO Center and stop it starting with Windows (the user ticked "Don't ask again").</summary>
+    public bool IoCenterDontAsk { get; set; }
+
+    /// <summary>Lighting-studio scenes the user saved (the Presets list's "My presets" category).</summary>
+    public List<Darkmount.Keyboard.Lamps.LightingScene> CustomScenes { get; set; } = [];
+
+    /// <summary>Names of presets starred as favourites (shown first in the Presets list).</summary>
+    public List<string> FavoriteScenes { get; set; } = [];
 }
 
 public static class SettingsStore
@@ -114,13 +127,31 @@ public static class SettingsStore
     {
         try
         {
-            return File.Exists(path) ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json) ?? new() : new();
+            var settings = File.Exists(path) ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json) ?? new() : new();
+            Migrate(settings);
+            return settings;
         }
         catch (Exception e) when (e is JsonException or IOException or NotSupportedException)
         {
             Log.Write($"Settings file unreadable, using defaults: {e.Message}");
-            return new();
+            var fresh = new AppSettings();
+            Migrate(fresh); // else a later save would carry AlertsOptIn = false and switch alerts off again
+            return fresh;
         }
+    }
+
+    /// <summary>One-time changes for settings files written by older versions.</summary>
+    internal static void Migrate(AppSettings settings)
+    {
+        if (!settings.AlertsOptIn)
+        {
+            var a = settings.Alerts ??= new();
+            a.CpuTempEnabled = a.GpuTempEnabled = a.RamEnabled = a.VramEnabled = a.FpsEnabled = false;
+            settings.AlertsOptIn = true;
+        }
+        settings.CustomScenes = [.. (settings.CustomScenes ?? []).Where(s => s is not null).Take(Darkmount.Keyboard.Lamps.SceneFiles.MaxScenes)
+            .Select(Darkmount.Keyboard.Lamps.SceneFiles.Sanitize)];
+        settings.FavoriteScenes = [.. (settings.FavoriteScenes ?? []).Where(n => !string.IsNullOrEmpty(n)).Distinct()];
     }
 
     public static void Save(string path, AppSettings settings)

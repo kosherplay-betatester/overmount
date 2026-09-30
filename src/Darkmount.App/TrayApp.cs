@@ -47,6 +47,8 @@ public sealed class TrayApp : ApplicationContext
     readonly ToolStripMenuItem _takeControl = new("Take control back from IO Center"), _updateItem = new("Check for updates…");
     readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 20_000 };
     readonly System.Windows.Forms.Timer _companionsTimer = new();
+    readonly System.Windows.Forms.Timer _ioCenterTimer = new();
+    bool _ioPromptOpen;
     Setup.ReleaseInfo? _latestRelease;
     DateTime _lastUpdateCheck;
     bool _updating;
@@ -81,7 +83,12 @@ public sealed class TrayApp : ApplicationContext
         _focusHotkey.Pressed += ToggleFocus;
         if (!_focusHotkey.Register(_settings.FocusHotkey)) Log.Write($"Hotkey '{_settings.FocusHotkey}' could not be registered");
 
-        if (_settings.StartWithWindows != Autostart.IsEnabled()) TrySetAutostart(_settings.StartWithWindows);
+        if (_settings.StartWithWindows && Autostart.IsDisabledInTaskManager())
+        {
+            _settings.StartWithWindows = false; // the user turned it off in Task Manager: respect that
+            SaveSettings();
+        }
+        else if (_settings.StartWithWindows != Autostart.IsEnabled()) TrySetAutostart(_settings.StartWithWindows);
 
         var exitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, Program.ExitEventName);
         ThreadPool.RegisterWaitForSingleObject(exitSignal, (_, _) => _ui.Post(_ => ExitThread(), null), null, Timeout.Infinite, executeOnlyOnce: true);
@@ -99,8 +106,20 @@ public sealed class TrayApp : ApplicationContext
         {
             // Once: offer the sensor apps if any is missing. Right after logon give Afterburner time to start on its own.
             _companionsTimer.Interval = Environment.TickCount64 < 5 * 60 * 1000 ? 90_000 : 6_000;
-            _companionsTimer.Tick += async (_, _) => { _companionsTimer.Stop(); await OfferCompanionsOnce(); };
+            _companionsTimer.Tick += async (_, _) =>
+            {
+                if (_ioPromptOpen) return; // one question at a time; try again on the next tick
+                _companionsTimer.Stop();
+                await OfferCompanionsOnce();
+            };
             _companionsTimer.Start();
+        }
+        if (!_settings.IoCenterDontAsk)
+        {
+            // Right after logon give IO Center's own autostart time to launch it, so one question covers both.
+            _ioCenterTimer.Interval = Environment.TickCount64 < 5 * 60 * 1000 ? 12_000 : 2_500;
+            _ioCenterTimer.Tick += (_, _) => { _ioCenterTimer.Stop(); OfferToRetireIoCenter(); };
+            _ioCenterTimer.Start();
         }
         _overlayTimer.Start();
         _pipeline.Start();
@@ -137,7 +156,7 @@ public sealed class TrayApp : ApplicationContext
         _pause.Click += (_, _) => { _dock.Paused = !_dock.Paused; _pause.Checked = _dock.Paused; _dock.Tick(); };
         _autostart.Click += (_, _) =>
         {
-            _settings.StartWithWindows = !_settings.StartWithWindows;
+            _settings.StartWithWindows = !Autostart.IsEnabled(); // the tick shows the real state (Task Manager can turn it off)
             TrySetAutostart(_settings.StartWithWindows);
             SaveSettings();
         };
@@ -298,7 +317,7 @@ public sealed class TrayApp : ApplicationContext
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException) { }
         }
-        bool ioCenter = IoCenterDetector.IsRunning();
+        bool ioCenter = IoCenterDetector.IsRunning(), ioCenterAutostart = IoCenter.IoCenterAutostart.CurrentUser.IsEnabled();
         var checks = new List<Pages.SetupCheck>
         {
             new("Keyboard connected", connected, false,
@@ -306,6 +325,10 @@ public sealed class TrayApp : ApplicationContext
             new("IO Center is closed", !ioCenter, false,
                 ioCenter ? "IO Center is running, so OverMount has paused. Right-click its tray icon → Exit." : "OverMount controls the keyboard.",
                 "Close IO Center", () => TakeControlFromIoCenter(ask: true)),
+            new("IO Center doesn't start with Windows", !ioCenterAutostart, false,
+                ioCenterAutostart ? "IO Center starts at sign-in and takes the keyboard from OverMount. Turn its autostart off (you can undo it in Task Manager → Startup apps)."
+                    : "Only OverMount starts with Windows.",
+                "Turn off", DisableIoCenterAutostart),
             new("CPU temperature", _pipeline.LastSnapshot?.CpuTemp is not null, false,
                 _pipeline.LastSnapshot?.CpuTemp is not null ? "CPU temperature is being read."
                     : "Windows can't read CPU temperature by itself. Set up OverMount's own CPU sensor (one Windows permission " +
@@ -430,6 +453,61 @@ public sealed class TrayApp : ApplicationContext
         Balloon("OverMount", "IO Center is closed. OverMount is back in control.");
     }
 
+    /// <summary>
+    /// At start: if IO Center is running or still starts with Windows, offer to close it and turn its autostart off
+    /// (both apps drive the keyboard, so OverMount pauses while IO Center runs). "Don't ask me again" silences this;
+    /// Home keeps showing both checks with a fix button.
+    /// </summary>
+    void OfferToRetireIoCenter()
+    {
+        if (_exiting || _ioPromptOpen || _settings.IoCenterDontAsk) return;
+        bool running = IoCenterDetector.IsRunning(), autostart = IoCenter.IoCenterAutostart.CurrentUser.IsEnabled();
+        if (!running && !autostart) return;
+
+        var recommended = new TaskDialogCommandLinkButton(
+            running && autostart ? "Close IO Center and turn off its autostart" : running ? "Close IO Center" : "Turn off IO Center's autostart",
+            "Recommended. OverMount does everything IO Center does for this keyboard.");
+        var closeOnly = new TaskDialogCommandLinkButton("Only close it for now", "IO Center will start again with Windows.");
+        var notNow = new TaskDialogButton("Not now");
+        var page = new TaskDialogPage
+        {
+            Caption = "OverMount",
+            Heading = running ? "IO Center is running" : "IO Center still starts with Windows",
+            Text = "IO Center and OverMount both talk to the keyboard, so OverMount pauses whenever IO Center runs. For " +
+                   "OverMount to work best, close IO Center and stop it from starting with Windows.\n\n" +
+                   "Nothing is uninstalled: you can turn IO Center's autostart back on in Task Manager → Startup apps.",
+            Icon = TaskDialogIcon.Information,
+            AllowCancel = true,
+            Verification = new TaskDialogVerificationCheckBox("Don't ask me again"),
+        };
+        page.Buttons.Add(recommended);
+        if (running && autostart) page.Buttons.Add(closeOnly);
+        page.Buttons.Add(notNow);
+
+        TaskDialogButton result;
+        _ioPromptOpen = true;
+        try { result = TaskDialog.ShowDialog(page, TaskDialogStartupLocation.CenterScreen); }
+        finally { _ioPromptOpen = false; }
+        if (page.Verification.Checked)
+        {
+            _settings.IoCenterDontAsk = true;
+            SaveSettings();
+        }
+        if (result == recommended && autostart) DisableIoCenterAutostart();
+        if ((result == recommended || result == closeOnly) && running) TakeControlFromIoCenter(ask: false);
+        Log.Write($"IO Center prompt: running={running}, autostart={autostart}, choice={result.Text}");
+    }
+
+    void DisableIoCenterAutostart()
+    {
+        if (IoCenter.IoCenterAutostart.CurrentUser.Disable())
+        {
+            Log.Write("IO Center's autostart turned off (Task Manager → Startup apps)");
+            Balloon("OverMount", "IO Center won't start with Windows any more. Undo it in Task Manager → Startup apps.");
+        }
+        else Balloon("OverMount", "IO Center's autostart could not be turned off. Use Task Manager → Startup apps.", ToolTipIcon.Warning);
+    }
+
     string StatusReport()
     {
         var s = _pipeline.LastSnapshot;
@@ -461,13 +539,14 @@ public sealed class TrayApp : ApplicationContext
     {
         bool sensorsChanged = System.Text.Json.JsonSerializer.Serialize(updated.Sensors)
                               != System.Text.Json.JsonSerializer.Serialize(_settings.Sensors);
+        bool autostartChanged = updated.StartWithWindows != _settings.StartWithWindows; // lighting edits apply settings many times a second
         _settings = updated;
         SaveSettings();
         if (!_hotkey.Register(updated.Hotkey))
             Balloon("OverMount", $"The hotkey '{updated.Hotkey}' is not available.", ToolTipIcon.Warning);
         if (!_focusHotkey.Register(updated.FocusHotkey))
             Balloon("OverMount", $"The focus-timer hotkey '{updated.FocusHotkey}' is not available.", ToolTipIcon.Warning);
-        TrySetAutostart(updated.StartWithWindows);
+        if (autostartChanged) TrySetAutostart(updated.StartWithWindows);
         ApplyFocusDurations();
         if (sensorsChanged) RestartPipeline();
         _pipeline.RefreshNow();
@@ -579,7 +658,7 @@ public sealed class TrayApp : ApplicationContext
         Log.Write($"Dock state: {state}");
         if (_exiting) return; // the tray icon is already gone
         UpdateStatus();
-        if (state == DockState.PausedForIoCenter && !_toldAboutIoCenter)
+        if (state == DockState.PausedForIoCenter && !_toldAboutIoCenter && !_ioPromptOpen)
         {
             _toldAboutIoCenter = true;
             Balloon("IO Center has the keyboard",
@@ -652,6 +731,7 @@ public sealed class TrayApp : ApplicationContext
         _overlayTimer.Stop();
         _updateTimer.Stop();
         _companionsTimer.Stop();
+        _ioCenterTimer.Stop();
         _tickTimer.Dispose();
         _pipeline.Dispose();
         _rgb.Dispose();

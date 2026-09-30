@@ -251,7 +251,7 @@ public sealed class SettingsForm : Form
     Control AlertsPage()
     {
         var p = new Ui.Page("Alerts", "A red banner appears on the dock (the stats move down so nothing is hidden) " +
-            "and the dock refreshes immediately.");
+            "and the dock refreshes immediately. Alerts are off until you tick the ones you want.");
         p.Row(_cpuOn, Unit(_cpuMax, "°C"));
         p.Row(_gpuOn, Unit(_gpuMax, "°C"));
         p.Row(_ramOn, Unit(_ramMax, "%"));

@@ -8,7 +8,8 @@ namespace Darkmount.App.Pages;
 
 /// <summary>
 /// IO Center-style custom lighting, run by OverMount: layers of effects, each on its own selection of keys and
-/// edge LEDs, per-key painting, a gallery of premade scenes, live preview, and the live overlays. Every change applies
+/// edge LEDs, per-key painting, a searchable gallery of premade scenes with favourites, the user's own saved presets
+/// (import/export as files), undo, a colour remix, live preview, and the live overlays. Every change applies
 /// immediately and makes the studio the active lighting.
 /// </summary>
 public sealed class LightingStudioPage : Ui.Page
@@ -52,6 +53,35 @@ public sealed class LightingStudioPage : Ui.Page
         _dim = Ui.Check("Lights off while Windows is locked or idle");
     readonly NumericUpDown _idle = Ui.Number(0, 240);
 
+    // Presets library: search, My presets, Favourites and the built-in categories.
+    readonly TextBox _search = new()
+    {
+        Width = 300, Font = Ui.Body, PlaceholderText = "Search presets and effects", BackColor = Ui.Panel, ForeColor = Ui.Text,
+        BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(0, 6, 10, 4),
+    };
+    readonly Label _myHeading = CategoryLabel("MY PRESETS"), _favHeading = CategoryLabel("FAVOURITES");
+    readonly Label _myEmpty = Ui.Note("Nothing saved yet. Build a scene below (or tweak any preset) and click \"Save as my preset\".", 880);
+    readonly Label _noMatch = Ui.Note("No preset matches your search.", 880);
+    readonly Label _presetStatus = Ui.Note("Tip: right-click a preset to add it to Favourites, save a copy to My presets or export it.", 880);
+    readonly Label _sceneStatus = Ui.Note("", 880);
+    readonly ChipPicker _myRow = PresetRow(), _favRow = PresetRow();
+    readonly List<(Label Heading, ChipPicker Row, IReadOnlyList<LightingScene> Scenes)> _categories = [];
+    readonly Dictionary<string, LightingScene> _builtIn;
+    readonly ToolTip _tips = new();
+    readonly Random _random = new();
+
+    // Undo: snapshots of the scene (JSON) before each change; quick bursts (dragging a slider) count as one step.
+    readonly Button _undoButton, _redoButton;
+    readonly List<string> _undo = [], _redo = [];
+    string _lastScene;
+    long _lastUndoPush;
+    bool _restoring;
+
+    /// <summary>The preset the scene was loaded from (highlighted in the list).</summary>
+    PresetRef? _loaded;
+
+    sealed record PresetRef(string Name, bool Mine);
+
     IReadOnlyList<LampPoint> _previewLayout = [];
     string? _brush = "FF2800"; // null = eraser
     bool _loading;
@@ -71,25 +101,50 @@ public sealed class LightingStudioPage : Ui.Page
         var s = get();
         _scene = (s.Scene ?? ScenePresets.All[0]).Clone();
 
-        // Presets gallery, by category ("Nature", "Gaming", …); the tooltip describes each one.
+        _lastScene = JsonSerializer.Serialize(_scene);
+        _builtIn = ScenePresets.All.DistinctBy(p => p.Name).ToDictionary(p => p.Name);
+        _loaded = SourceOf(_scene.Name);
+
+        // Presets gallery: My presets, Favourites, then by category ("Nature", "Gaming", …); tooltips describe each one.
         var presets = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        presets.Controls.AddRange([_myHeading, _myEmpty, _myRow, _favHeading, _favRow]);
         foreach (var (category, scenes) in ScenePresets.Categories)
         {
-            presets.Controls.Add(new Label
-            {
-                Text = category.ToUpperInvariant(), AutoSize = true, ForeColor = Ui.Dim, Font = new Font("Segoe UI Semibold", 8.5f),
-                Margin = new Padding(2, 8, 0, 2), UseMnemonic = false,
-            });
+            var heading = CategoryLabel(category.ToUpperInvariant());
             // One drawn control per category instead of a Button per preset: the page appears several times faster.
-            var row = new ChipPicker(wrapWidth: 1000, minChipWidth: 124) { Margin = new Padding(0, 0, 0, 2) };
-            row.SetChips(scenes.Select(p => new ChipPicker.Chip(p.Name, p.Description, p)));
-            row.ChipClicked += chip => LoadPreset((LightingScene)chip.Tag!);
-            presets.Controls.Add(row);
+            var row = PresetRow();
+            presets.Controls.AddRange([heading, row]);
+            _categories.Add((heading, row, scenes));
+        }
+        presets.Controls.Add(_noMatch);
+        foreach (var row in PresetRows())
+        {
+            row.ChipClicked += LoadPreset;
+            row.ChipMenu += PresetMenu;
         }
         Heading("Presets");
+        var surprise = Ui.Button("Surprise me", (_, _) => SurpriseMe());
+        var import = Ui.Button("Import…", (_, _) => ImportScenes());
+        _tips.SetToolTip(surprise, "Load a random preset");
+        _tips.SetToolTip(import, "Add scenes someone shared with you (" + SceneFiles.Extension + " files) to My presets");
+        AddFull(Pair(Hint("Search"), _search, surprise, import));
+        AddFull(_presetStatus);
         AddFull(presets);
+        _search.TextChanged += (_, _) => RefreshPresets();
 
         Heading("Your scene");
+        var save = Ui.Button("Save as my preset…", (_, _) => SaveAsMine(), primary: true);
+        _undoButton = Ui.Button("Undo", (_, _) => Undo());
+        _redoButton = Ui.Button("Redo", (_, _) => Redo());
+        var remix = Ui.Button("Remix colours", (_, _) => RemixColours());
+        var export = Ui.Button("Export…", (_, _) => Export([_scene], _scene.Name));
+        _tips.SetToolTip(save, "Keep this scene in My presets, to load it again any time");
+        _tips.SetToolTip(_undoButton, "Undo the last change to the scene (Ctrl+Z)");
+        _tips.SetToolTip(_redoButton, "Redo (Ctrl+Y)");
+        _tips.SetToolTip(remix, "New colours from a random colour scheme; every colour keeps its brightness. Click again for another.");
+        _tips.SetToolTip(export, "Save this scene as a file to share it");
+        AddFull(Pair(save, _undoButton, _redoButton, remix, export));
+        AddFull(_sceneStatus);
         var layerButtons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
         layerButtons.Controls.AddRange([
             Ui.Button("+ Effect layer", (_, _) => AddLayer(paint: false)), Ui.Button("+ Paint layer (per-key colours)", (_, _) => AddLayer(paint: true)),
@@ -177,10 +232,12 @@ public sealed class LightingStudioPage : Ui.Page
         SetBrush(_brush);
         BuildView();
         RefreshLayers();
+        RefreshPresets();
+        UpdateUndoButtons();
         // The studio can sit inside another page, so it watches its own visibility instead of relying on VisibleChanged.
         _previewTimer.Tick += (_, _) => Preview();
         _previewTimer.Start();
-        Disposed += (_, _) => _previewTimer.Dispose();
+        Disposed += (_, _) => { _previewTimer.Dispose(); _tips.Dispose(); };
     }
 
     LightLayer? Current => _layers.SelectedIndex >= 0 && _layers.SelectedIndex < _scene.Layers.Count ? _scene.Layers[_layers.SelectedIndex] : null;
@@ -421,6 +478,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void FillAll()
     {
+        NewUndoStep();
         if (Current is not { Effect: SceneEffect.PerKey } l) return;
         Paint(l, AllIds());
         Commit();
@@ -428,6 +486,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void ClearPaint()
     {
+        NewUndoStep();
         if (Current is not { Effect: SceneEffect.PerKey } l) return;
         l.KeyColors.Clear();
         l.EdgeColors.Clear();
@@ -527,6 +586,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void AddColor()
     {
+        NewUndoStep();
         if (Current is not { } l || l.Colors.Count >= 7 || !SceneEffects.Get(l.Effect).ColorModes.Contains(SceneColorMode.Gradient)) return;
         l.ColorMode = SceneColorMode.Gradient;
         l.Colors.Add(l.Colors.LastOrDefault() ?? "FFFFFF");
@@ -537,6 +597,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void RemoveColor()
     {
+        NewUndoStep();
         if (Current is not { } l || l.Colors.Count <= 1) return;
         l.Colors.RemoveAt(l.Colors.Count - 1);
         l.ColorMode = l.Colors.Count switch { 1 => SceneColorMode.Single, 2 when l.ColorMode == SceneColorMode.Gradient => SceneColorMode.Gradient, _ => l.ColorMode };
@@ -547,6 +608,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void SetEffect(SceneEffect effect)
     {
+        NewUndoStep();
         if (Current is null || Painting) { AddLayer(paint: false); if (Current is null) return; }
         var layer = Current!;
         layer.Effect = effect;
@@ -561,6 +623,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void AddLayer(bool paint)
     {
+        NewUndoStep();
         if (_scene.Layers.Count >= MaxLayers) { _status.Text = $"A scene can have up to {MaxLayers} layers."; return; }
         var layer = paint
             ? new LightLayer { Name = "Painted keys", Effect = SceneEffect.PerKey, AllKeys = true, AllEdges = true }
@@ -577,6 +640,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void DeleteLayer()
     {
+        NewUndoStep();
         if (Current is null) return;
         _scene.Layers.RemoveAt(_layers.SelectedIndex);
         RefreshLayers();
@@ -585,6 +649,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void MoveLayer(int delta)
     {
+        NewUndoStep();
         int i = _layers.SelectedIndex, j = i + delta;
         if (i < 0 || j < 0 || j >= _scene.Layers.Count) return;
         (_scene.Layers[i], _scene.Layers[j]) = (_scene.Layers[j], _scene.Layers[i]);
@@ -596,6 +661,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void ToggleLayer()
     {
+        NewUndoStep();
         if (Current is not { } l) return;
         l.Enabled = !l.Enabled;
         RefreshLayers();
@@ -604,6 +670,7 @@ public sealed class LightingStudioPage : Ui.Page
 
     void RenameLayer()
     {
+        NewUndoStep();
         if (Current is not { } l) return;
         if (Ui.Prompt(FindForm(), "Rename layer", "Layer name", l.Name) is not { } name || string.IsNullOrWhiteSpace(name)) return;
         l.Name = name.Trim();
@@ -611,16 +678,24 @@ public sealed class LightingStudioPage : Ui.Page
         Commit();
     }
 
-    void LoadPreset(LightingScene preset)
+    void LoadPreset(ChipPicker.Chip chip)
     {
+        if (chip.Tag is PresetRef r && Find(r) is { } scene) LoadPreset(scene, r);
+    }
+
+    void LoadPreset(LightingScene preset, PresetRef? from)
+    {
+        NewUndoStep();
         var copy = preset.Clone();
         _scene.Name = copy.Name;
         _scene.Description = copy.Description;
         _scene.Background = copy.Background;
         _scene.Layers = copy.Layers;
         _layers.SelectedIndex = -1;
+        _loaded = from;
+        ShowSelection();
         RefreshLayers();
-        _status.Text = $"\"{copy.Name}\" — {copy.Description}";
+        _presetStatus.Text = string.IsNullOrWhiteSpace(copy.Description) ? $"\"{copy.Name}\"" : $"\"{copy.Name}\" — {copy.Description}";
         Commit();
     }
 
@@ -632,13 +707,20 @@ public sealed class LightingStudioPage : Ui.Page
         _scene.Description = fresh.Description;
         _scene.Background = fresh.Background;
         _scene.Layers = fresh.Layers;
+        _lastScene = JsonSerializer.Serialize(_scene); // changed elsewhere: start a fresh undo history
+        _undo.Clear();
+        _redo.Clear();
+        UpdateUndoButtons();
+        _loaded = SourceOf(_scene.Name);
         RefreshLayers();
+        RefreshPresets();
     }
 
     /// <summary>Applies the edited scene and options immediately (and saves them). Scene edits make the studio active.</summary>
     void Commit(bool activate = true)
     {
         if (_loading) return;
+        TrackUndo();
         var s = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(_get()))!;
         bool wasActive = s.RgbEnabled;
         s.Scene = _scene.Clone();
@@ -654,6 +736,414 @@ public sealed class LightingStudioPage : Ui.Page
         };
         _apply(s);
         if (activate && !wasActive) _activated?.Invoke();
+    }
+
+    // ---------------------------------------------------------------- presets library
+
+    static Label CategoryLabel(string text) => new()
+    {
+        Text = text, AutoSize = true, ForeColor = Ui.Dim, Font = new Font("Segoe UI Semibold", 8.5f),
+        Margin = new Padding(2, 8, 0, 2), UseMnemonic = false,
+    };
+
+    static ChipPicker PresetRow() => new(wrapWidth: 1000, minChipWidth: 124) { Margin = new Padding(0, 0, 0, 2) };
+
+    IEnumerable<ChipPicker> PresetRows() => new[] { _myRow, _favRow }.Concat(_categories.Select(c => c.Row));
+
+    static ChipPicker.Chip ChipFor(LightingScene p, bool mine) =>
+        new(p.Name, string.IsNullOrWhiteSpace(p.Description) ? null : p.Description, new PresetRef(p.Name, mine));
+
+    List<LightingScene> MyScenes() => _get().CustomScenes ?? [];
+
+    LightingScene? Find(PresetRef r) => r.Mine ? MyScenes().FirstOrDefault(c => c.Name == r.Name) : _builtIn.GetValueOrDefault(r.Name);
+
+    PresetRef? SourceOf(string name) =>
+        MyScenes().Any(c => c.Name == name) ? new(name, true) : _builtIn.ContainsKey(name) ? new(name, false) : null;
+
+    void ShowSelection()
+    {
+        foreach (var row in PresetRows()) row.Selected = _loaded;
+    }
+
+    /// <summary>Fills My presets and Favourites and applies the search, all in one layout pass.</summary>
+    void RefreshPresets() => Ui.Batch(this, () =>
+    {
+        string q = _search.Text.Trim();
+        bool Match(LightingScene p) => q.Length == 0
+            || p.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || p.Description.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || p.Layers.Any(l => SceneEffects.Get(l.Effect).Name.Contains(q, StringComparison.OrdinalIgnoreCase));
+        var s = _get();
+        var mine = (s.CustomScenes ?? []).Where(Match).ToList();
+        _myRow.SetChips(mine.Select(p => ChipFor(p, mine: true)));
+        _myRow.Visible = mine.Count > 0;
+        _myEmpty.Visible = q.Length == 0 && (s.CustomScenes ?? []).Count == 0;
+        _myHeading.Visible = _myRow.Visible || _myEmpty.Visible;
+        var favourites = (s.FavoriteScenes ?? []).Select(n => _builtIn.GetValueOrDefault(n)).OfType<LightingScene>().Where(Match).ToList();
+        _favRow.SetChips(favourites.Select(p => ChipFor(p, mine: false)));
+        _favHeading.Visible = _favRow.Visible = favourites.Count > 0;
+        int shown = mine.Count + favourites.Count;
+        foreach (var (heading, row, scenes) in _categories)
+        {
+            var match = scenes.Where(Match).ToList();
+            if (!row.Chips.Select(c => ((PresetRef)c.Tag!).Name).SequenceEqual(match.Select(p => p.Name)))
+                row.SetChips(match.Select(p => ChipFor(p, mine: false)));
+            heading.Visible = row.Visible = match.Count > 0;
+            shown += match.Count;
+        }
+        _noMatch.Visible = q.Length > 0 && shown == 0;
+        ShowSelection();
+    });
+
+    void PresetMenu(ChipPicker.Chip chip, Point at)
+    {
+        if (chip.Tag is not PresetRef r || Find(r) is not { } scene) return;
+        var menu = new ContextMenuStrip { Font = Ui.Body };
+        menu.Items.Add("Load", null, (_, _) => LoadPreset(scene, r));
+        if (r.Mine)
+        {
+            menu.Items.Add("Update with the scene below", null, (_, _) => UpdateMine(r.Name));
+            menu.Items.Add("Rename…", null, (_, _) => RenameMine(r.Name));
+            menu.Items.Add("Export…", null, (_, _) => Export([scene], scene.Name));
+            menu.Items.Add("Export all my presets…", null, (_, _) => Export(MyScenes(), "My OverMount presets"));
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Delete", null, (_, _) => DeleteMine(r.Name));
+        }
+        else
+        {
+            bool favourite = (_get().FavoriteScenes ?? []).Contains(r.Name);
+            menu.Items.Add(favourite ? "Remove from Favourites" : "Add to Favourites", null, (_, _) => ToggleFavourite(r.Name));
+            menu.Items.Add("Save a copy to My presets…", null, (_, _) => SaveAsMine(scene));
+            menu.Items.Add("Export…", null, (_, _) => Export([scene], scene.Name));
+        }
+        menu.Closed += (_, _) => BeginInvoke(menu.Dispose); // after the clicked item's handler has run
+        menu.Show(at);
+    }
+
+    /// <summary>Changes the saved library (My presets, Favourites) and refreshes the lists.</summary>
+    void UpdateLibrary(Action<AppSettings> change)
+    {
+        var s = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(_get()))!;
+        s.CustomScenes ??= [];
+        s.FavoriteScenes ??= [];
+        change(s);
+        _apply(s);
+        RefreshPresets();
+    }
+
+    static int IndexOf(List<LightingScene> scenes, string name) =>
+        scenes.FindIndex(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Saves the scene below (or <paramref name="source"/>, a built-in preset) in My presets under a name the user picks.</summary>
+    void SaveAsMine(LightingScene? source = null)
+    {
+        var scene = (source ?? _scene).Clone();
+        if (scene.Layers.Count == 0) { _sceneStatus.Text = "Pick a preset or add a layer first: there's nothing to save yet."; return; }
+        var mine = MyScenes();
+        bool editingMine = source is null && _loaded is { Mine: true } l && l.Name == scene.Name;
+        string suggestion = editingMine ? scene.Name
+            : SceneFiles.UniqueName(_builtIn.ContainsKey(scene.Name) ? SceneFiles.CleanName("My " + scene.Name) : SceneFiles.CleanName(scene.Name),
+                mine.Select(m => m.Name));
+        if (Ui.Prompt(FindForm(), "Save as my preset", "Name for your preset", suggestion) is not { } typed) return;
+        var name = SceneFiles.CleanName(typed);
+        if (name.Length == 0) return;
+        int existing = IndexOf(mine, name);
+        if (existing < 0 && mine.Count >= SceneFiles.MaxScenes)
+        {
+            _sceneStatus.Text = $"My presets is full ({SceneFiles.MaxScenes}). Delete one first (right-click it).";
+            return;
+        }
+        if (existing >= 0 && MessageBox.Show(FindForm(), $"Replace your preset \"{mine[existing].Name}\" with this scene?", "OverMount",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        scene.Name = name;
+        if (string.IsNullOrWhiteSpace(scene.Description)) scene.Description = "Your own scene.";
+        if (source is null)
+        {
+            _scene.Name = name; // the scene below is now this preset
+            _lastScene = JsonSerializer.Serialize(_scene);
+            _loaded = new PresetRef(name, true);
+        }
+        UpdateLibrary(s =>
+        {
+            int i = IndexOf(s.CustomScenes, name);
+            if (i >= 0) s.CustomScenes[i] = scene;
+            else s.CustomScenes.Add(scene);
+            if (source is null) s.Scene = _scene.Clone();
+        });
+        (source is null ? _sceneStatus : _presetStatus).Text = $"Saved \"{name}\" in My presets (at the top of Presets). Right-click it to rename, update, export or delete it.";
+    }
+
+    void UpdateMine(string name)
+    {
+        if (_scene.Layers.Count == 0) return;
+        if (MessageBox.Show(FindForm(), $"Replace \"{name}\" with the scene below?", "OverMount",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        UpdateLibrary(s =>
+        {
+            int i = IndexOf(s.CustomScenes, name);
+            if (i < 0) return;
+            var copy = _scene.Clone();
+            copy.Name = s.CustomScenes[i].Name;
+            copy.Description = s.CustomScenes[i].Description;
+            s.CustomScenes[i] = copy;
+        });
+        _presetStatus.Text = $"\"{name}\" now holds the scene below.";
+    }
+
+    void RenameMine(string name)
+    {
+        if (Ui.Prompt(FindForm(), "Rename preset", "New name", name) is not { } typed) return;
+        var newName = SceneFiles.CleanName(typed);
+        if (newName.Length == 0 || newName == name) return;
+        if (IndexOf(MyScenes(), newName) is var clash && clash >= 0 && !string.Equals(MyScenes()[clash].Name, name, StringComparison.OrdinalIgnoreCase))
+        {
+            _presetStatus.Text = $"You already have a preset called \"{MyScenes()[clash].Name}\".";
+            return;
+        }
+        bool current = _loaded == new PresetRef(name, true);
+        if (current)
+        {
+            _scene.Name = newName;
+            _lastScene = JsonSerializer.Serialize(_scene);
+            _loaded = new PresetRef(newName, true);
+        }
+        UpdateLibrary(s =>
+        {
+            int i = IndexOf(s.CustomScenes, name);
+            if (i >= 0) s.CustomScenes[i].Name = newName;
+            if (current) s.Scene = _scene.Clone();
+        });
+        _presetStatus.Text = $"Renamed to \"{newName}\".";
+    }
+
+    void DeleteMine(string name)
+    {
+        if (MessageBox.Show(FindForm(), $"Delete your preset \"{name}\"? This can't be undone (the lighting on your keyboard stays as it is).",
+                "OverMount", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        if (_loaded == new PresetRef(name, true)) _loaded = null;
+        UpdateLibrary(s => s.CustomScenes.RemoveAll(c => c.Name == name));
+        _presetStatus.Text = $"Deleted \"{name}\".";
+    }
+
+    void ToggleFavourite(string name)
+    {
+        bool add = !(_get().FavoriteScenes ?? []).Contains(name);
+        UpdateLibrary(s =>
+        {
+            s.FavoriteScenes.Remove(name);
+            if (add) s.FavoriteScenes.Add(name);
+        });
+        _presetStatus.Text = add ? $"\"{name}\" is in your Favourites." : $"\"{name}\" was removed from your Favourites.";
+    }
+
+    void SurpriseMe()
+    {
+        var pool = _builtIn.Values.Select(p => (Scene: p, Ref: new PresetRef(p.Name, false)))
+            .Concat(MyScenes().Select(p => (Scene: p, Ref: new PresetRef(p.Name, true))))
+            .Where(x => x.Ref != _loaded).ToList();
+        if (pool.Count == 0) return;
+        var (scene, r) = pool[_random.Next(pool.Count)];
+        LoadPreset(scene, r);
+    }
+
+    static string SafeFileName(string name)
+    {
+        var bad = Path.GetInvalidFileNameChars();
+        var clean = new string(name.Select(c => bad.Contains(c) ? '_' : c).ToArray()).Trim(' ', '.');
+        return clean.Length == 0 ? "Scene" : clean;
+    }
+
+    void Export(IEnumerable<LightingScene> scenes, string fileName)
+    {
+        var list = scenes.Where(s => s.Layers.Count > 0).ToList();
+        if (list.Count == 0) { _sceneStatus.Text = "There's nothing to export yet."; return; }
+        using var dlg = new SaveFileDialog
+        {
+            Title = "Export lighting", FileName = SafeFileName(fileName) + SceneFiles.Extension, AddExtension = false,
+            Filter = "OverMount scenes|*" + SceneFiles.Extension + "|All files|*.*", OverwritePrompt = true,
+        };
+        if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+        try
+        {
+            File.WriteAllText(dlg.FileName, SceneFiles.Serialize(list));
+            _sceneStatus.Text = $"Exported {(list.Count == 1 ? $"\"{list[0].Name}\"" : $"{list.Count} scenes")} to {Path.GetFileName(dlg.FileName)}. " +
+                                "Anyone with OverMount can add it with Presets → Import.";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _sceneStatus.Text = $"Export failed: {e.Message}";
+        }
+    }
+
+    void ImportScenes()
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Title = "Import lighting", Multiselect = true, Filter = "OverMount scenes|*.json|All files|*.*",
+        };
+        if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+        var found = new List<LightingScene>();
+        var problems = new List<string>();
+        long total = 0;
+        foreach (var path in dlg.FileNames)
+        {
+            try
+            {
+                long size = new FileInfo(path).Length;
+                if (size > SceneFiles.MaxFileBytes || (total += size) > 4L * SceneFiles.MaxFileBytes)
+                {
+                    problems.Add($"{Path.GetFileName(path)}: too big");
+                    continue;
+                }
+                found.AddRange(SceneFiles.Parse(File.ReadAllText(path)));
+            }
+            catch (FormatException e) { problems.Add($"{Path.GetFileName(path)}: {e.Message}"); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { problems.Add($"{Path.GetFileName(path)}: {e.Message}"); }
+        }
+        if (found.Count == 0)
+        {
+            MessageBox.Show(FindForm(), "Nothing was imported.\n\n" + string.Join("\n", problems), "OverMount",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var added = new List<LightingScene>();
+        UpdateLibrary(s =>
+        {
+            foreach (var scene in found)
+            {
+                if (s.CustomScenes.Count >= SceneFiles.MaxScenes) { problems.Add("My presets is full"); break; }
+                scene.Name = SceneFiles.UniqueName(scene.Name, s.CustomScenes.Select(c => c.Name));
+                s.CustomScenes.Add(scene);
+                added.Add(scene);
+            }
+        });
+        if (added.Count > 0) LoadPreset(added[0], new PresetRef(added[0].Name, true));
+        _presetStatus.Text = $"Imported {added.Count} scene{(added.Count == 1 ? "" : "s")} into My presets" +
+                             (problems.Count > 0 ? $". Skipped: {string.Join("; ", problems.Distinct())}" : ".");
+    }
+
+    // ---------------------------------------------------------------- undo and remix
+
+    void TrackUndo()
+    {
+        var json = JsonSerializer.Serialize(_scene);
+        if (json == _lastScene) return;
+        if (!_restoring)
+        {
+            long now = Environment.TickCount64;
+            if (now - _lastUndoPush > 600)
+            {
+                _undo.Add(_lastScene);
+                if (_undo.Count > 60) _undo.RemoveAt(0);
+            }
+            _lastUndoPush = now;
+            _redo.Clear();
+        }
+        _lastScene = json;
+        UpdateUndoButtons();
+    }
+
+    /// <summary>Dimmed rather than disabled: a disabled flat button's text is barely readable on the dark theme.</summary>
+    /// <summary>The next change is its own undo step (only continuous edits such as dragging a slider are merged).</summary>
+    void NewUndoStep() => _lastUndoPush = 0;
+
+    void UpdateUndoButtons()
+    {
+        _undoButton.ForeColor = _undo.Count > 0 ? Ui.Text : Ui.Dim;
+        _redoButton.ForeColor = _redo.Count > 0 ? Ui.Text : Ui.Dim;
+    }
+
+    void Undo() => Step(_undo, _redo, "Undone");
+
+    void Redo() => Step(_redo, _undo, "Redone");
+
+    void Step(List<string> from, List<string> to, string what)
+    {
+        if (from.Count == 0) { _sceneStatus.Text = from == _undo ? "Nothing to undo yet." : "Nothing to redo."; return; }
+        to.Add(JsonSerializer.Serialize(_scene));
+        var snapshot = JsonSerializer.Deserialize<LightingScene>(from[^1])!;
+        from.RemoveAt(from.Count - 1);
+        _scene.Name = snapshot.Name;
+        _scene.Description = snapshot.Description;
+        _scene.Background = snapshot.Background;
+        _scene.Layers = snapshot.Layers;
+        _restoring = true;
+        try
+        {
+            RefreshLayers();
+            Commit();
+        }
+        finally { _restoring = false; }
+        _loaded = SourceOf(_scene.Name);
+        ShowSelection();
+        UpdateUndoButtons();
+        _sceneStatus.Text = $"{what}. {_undo.Count} step{(_undo.Count == 1 ? "" : "s")} to undo, {_redo.Count} to redo.";
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (FromHandle(msg.HWnd) is not TextBoxBase) // text boxes keep their own Ctrl+Z
+        {
+            if (keyData == (Keys.Control | Keys.Z)) { Undo(); return true; }
+            if (keyData is (Keys.Control | Keys.Y) or (Keys.Control | Keys.Shift | Keys.Z)) { Redo(); return true; }
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    // Hue offsets (turns) of a few classic colour schemes.
+    static readonly (string Name, double[] Hues)[] Schemes =
+    [
+        ("analogous", [0, 0.07, -0.07, 0.14, -0.14]),
+        ("complementary", [0, 0.5, 0.04, 0.54, 0.46]),
+        ("triadic", [0, 1 / 3.0, 2 / 3.0, 0.06, 0.39]),
+        ("split-complementary", [0, 0.42, 0.58, 0.05, 0.5]),
+        ("tetradic", [0, 0.25, 0.5, 0.75, 0.125]),
+    ];
+
+    /// <summary>
+    /// New hues from a random colour scheme for every colour in the scene; each keeps its saturation and brightness, so
+    /// dark backgrounds stay dark and whites stay white. The same colour gets the same new colour on every layer.
+    /// </summary>
+    void RemixColours()
+    {
+        NewUndoStep();
+        if (_scene.Layers.Count == 0) { _sceneStatus.Text = "Pick a preset or add a layer first."; return; }
+        var (scheme, hues) = Schemes[_random.Next(Schemes.Length)];
+        double baseHue = _random.NextDouble();
+        int next = 0;
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string Remap(string hex)
+        {
+            if (map.TryGetValue(hex, out var done)) return done;
+            var (_, sat, val) = ToHsv(ToColor(hex));
+            return map[hex] = sat < 0.12 || val < 0.03 ? hex : Hex(FromHsv(baseHue + hues[next++ % hues.Length], sat, val));
+        }
+        foreach (var l in _scene.Layers)
+        {
+            l.Colors = [.. l.Colors.Select(Remap)];
+            foreach (var k in l.KeyColors.Keys.ToList()) l.KeyColors[k] = Remap(l.KeyColors[k]);
+            foreach (var k in l.EdgeColors.Keys.ToList()) l.EdgeColors[k] = Remap(l.EdgeColors[k]);
+        }
+        ShowLayer();
+        Commit();
+        _sceneStatus.Text = $"Remixed with a {scheme} colour scheme. Click again for another, or Undo (Ctrl+Z) for the old colours.";
+    }
+
+    static (double H, double S, double V) ToHsv(Color c)
+    {
+        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min;
+        double h = d == 0 ? 0 : max == r ? (g - b) / d % 6 : max == g ? (b - r) / d + 2 : (r - g) / d + 4;
+        return ((h / 6 % 1 + 1) % 1, max == 0 ? 0 : d / max, max);
+    }
+
+    static Color FromHsv(double h, double s, double v)
+    {
+        h = (h % 1 + 1) % 1 * 6;
+        int i = (int)Math.Floor(h) % 6;
+        double f = h - Math.Floor(h), p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f));
+        var (r, g, b) = i switch { 0 => (v, t, p), 1 => (q, v, p), 2 => (p, v, t), 3 => (p, q, v), 4 => (t, p, v), _ => (v, p, q) };
+        return Color.FromArgb((int)Math.Round(r * 255), (int)Math.Round(g * 255), (int)Math.Round(b * 255));
     }
 
     static Color ToColor(string hex)

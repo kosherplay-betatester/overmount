@@ -157,6 +157,7 @@ public sealed class RgbEngine : IDisposable
                     MouseX = needsMouse ? _mouse.X : null,
                     MouseY = needsMouse ? _mouse.Y : null,
                     MouseClicks = needsMouse ? _mouse.Clicks : [],
+                    LocalHours = DateTime.Now.TimeOfDay.TotalHours,
                 };
 
                 Dictionary<int, LampColor> frame;

@@ -1,16 +1,22 @@
 namespace Darkmount.Keyboard.Lamps;
 
 /// <summary>
-/// Pretend inputs for previews (the lighting studio without a keyboard, screenshots): someone typing "overmount" at six
-/// keys a second, music at 120 bpm, the mouse drawing figure-eights and clicking, a screen with a drifting picture and a
-/// flash every few seconds, and warm sensors. Every value depends only on the time, like the effects.
+/// Pretend inputs for previews (the lighting studio without a keyboard, screenshots): someone typing "overmount rocks"
+/// (with a typo fixed by Backspace, then Enter) at six keys a second, music at 120 bpm, the mouse drawing figure-eights
+/// and clicking, a screen with a drifting picture and a flash every few seconds, warm sensors, and a whole day passing
+/// every 30 seconds. Every value depends only on the time, like the effects.
 /// </summary>
 public static class SceneDemo
 {
-    static readonly int[] Typing = "overmount rocks".Select(c => c == ' '
-        ? 57
-        : KeyIds.All.FirstOrDefault(k => k.Zone == KeyZone.Keyboard && k.Label.Equals(c.ToString(), StringComparison.OrdinalIgnoreCase))?.Id ?? 57)
-        .Select(id => (int)id).ToArray();
+    static readonly int[] Typing = "overmount rockz\bs\n".Select(c => c switch
+        {
+            ' ' => Usage(0x2C),
+            '\b' => Usage(0x2A),
+            '\n' => Usage(0x28),
+            _ => KeyIds.All.FirstOrDefault(k => k.Zone == KeyZone.Keyboard && k.Label.Equals(c.ToString(), StringComparison.OrdinalIgnoreCase))?.Id ?? 57,
+        }).Select(id => (int)id).ToArray();
+
+    static byte Usage(int usage) => KeyIds.All.FirstOrDefault(k => k.Zone == KeyZone.Keyboard && k.HidUsage == usage)?.Id ?? 57;
 
     const double KeysPerSecond = 6, BeatSeconds = 0.5;
     const int GridWidth = 24, GridHeight = 8;
@@ -59,6 +65,7 @@ public static class SceneDemo
             AudioLevel = Math.Clamp(0.35 + 0.55 * kick, 0, 1), AudioBands = bands, BeatTimes = beats,
             MouseX = MouseX(seconds), MouseY = MouseY(seconds), MouseClicks = clicks,
             ScreenGrid = grid, ScreenGridWidth = GridWidth, ScreenGridHeight = GridHeight, ScreenFlashes = flashes,
+            LocalHours = seconds * 24 / 30 % 24,
         };
     }
 

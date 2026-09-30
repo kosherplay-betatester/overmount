@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea043?style=flat-square" alt="MIT license"></a>
 </p>
 
-**OverMount** takes over your **be quiet! Dark Mount** (and Light Mount) keyboard and makes it do far more than the stock software. You get a live hardware dashboard on the media dock with **FPS and 1% lows** in games. You get IO Center-style **per-key RGB** with layers, paint mode and 108 premade scenes, plus lighting that reacts to your typing, your music, your screen and your mouse. And you get macros, key remapping, per-game profiles, a focus timer, and one-click import of your IO Center profiles.
+**OverMount** takes over your **be quiet! Dark Mount** (and Light Mount) keyboard and makes it do far more than the stock software. You get a live hardware dashboard on the media dock with **FPS and 1% lows** in games. You get IO Center-style **per-key RGB** with layers, paint mode, 123 premade scenes and your own saved presets, plus lighting that reacts to your typing, your music, your screen and your mouse. And you get macros, key remapping, per-game profiles, a focus timer, and one-click import of your IO Center profiles.
 
 It's one small tray app that installs in seconds with no admin rights, and it updates itself.
 
@@ -23,7 +23,7 @@ It's one small tray app that installs in seconds with no admin rights, and it up
 | | |
 |---|---|
 | 🎮 **Game dashboard on the dock** | CPU/GPU temperature, load and watts with live graphs, RAM/VRAM, and **FPS + 1% low** when a game runs (measured by OverMount itself from RivaTuner frame times). Pick what's big: temperature, load or watts. |
-| 🌈 **Lighting studio** | Stack up to 8 layers (effects on any keys or edge LEDs), **paint single keys** in any colour, and start from 108 premade scenes in 11 categories. Up to 30 fps. |
+| 🌈 **Lighting studio** | Stack up to 8 layers (effects on any keys or edge LEDs), **paint single keys** in any colour, start from 123 premade scenes in 11 categories, and **save your own presets**. Up to 30 fps. |
 | 🎵 **Reactive lighting** | Audio spectrum and audio pulse (from whatever your PC plays), screen sync (Ambilight), typing ripples and heatmaps, and CPU-temperature colours. |
 | 🧠 **Smart overlays** | Caps/Num/Scroll lock glow, a volume bar on F1–F12, a red mic-mute key, a shortcut helper while you hold Ctrl/Alt/Win, and focus-timer progress. Lights fade out when you lock the PC. |
 | 🖥️ **Six dock screens** | Stats, Now playing (Spotify, browsers…), Clock & calendar, Network, Focus timer, and your own GIF, video or pictures. Rotate them automatically or let smart screens pick. |
@@ -39,12 +39,17 @@ One **Lighting** page, one switch: **Studio** (OverMount draws layers, per-key c
 
 <p align="center"><img src="docs/images/app-lighting-paint.png" alt="Lighting studio with a paint layer and the edge-LED ring" width="92%"></p>
 
-- **Presets**: 108 scenes in 11 categories (Signature, Everyday typing, Neon & synth, Space, Nature, Gaming, Party & music, Seasonal, Typing, System, Screen & mouse). **Everyday typing** has calm static colours for dark rooms (Night owl, Candlelight, Midnight blue, Red night vision, Wake on type) and bright rooms (Daylight, Arctic, Mint fresh, Office pro), each with a gentle colour change on the keys you press. The rest include Keystroke lightning, Combo meter, Beat rings, Nightclub, Mouse spotlight, Game flashes, Hyperspace, Campfire, Thunderstorm, Tactical FPS, Halloween, Cyberpunk, Aurora, Gamer WASD… Click one, then tweak it. Without a keyboard the preview plays pretend typing, music and mouse moves so you can see the reactive ones.
+- **My presets**: click **Save as my preset…** to keep any scene you built or tweaked. Your presets appear at the top of the list; right-click one to update, rename, export or delete it. **Export…** saves a scene as a file you can share, and **Import…** adds scenes someone shared with you.
+- **Favourites, search and Surprise me**: right-click any preset to star it into *Favourites*, type in **Search** to filter presets by name, mood or effect, or let **Surprise me** pick one.
+- **Undo / Redo** (Ctrl+Z / Ctrl+Y) for every change to your scene, and **Remix colours**, which gives the whole scene new colours from a random colour scheme while every colour keeps its brightness.
+- **Presets**: 123 scenes in 11 categories (Signature, Everyday typing, Neon & synth, Space, Nature, Gaming, Party & music, Seasonal, Typing, System, Screen & mouse). **Everyday typing** has calm static colours for dark rooms (Night owl, Candlelight, Midnight blue, Red night vision, Wake on type) and bright rooms (Daylight, Arctic, Mint fresh, Office pro), each with a gentle colour change on the keys you press. The rest include Keystroke lightning, Combo meter, Beat rings, Nightclub, Mouse spotlight, Game flashes, Hyperspace, Campfire, Thunderstorm, Tactical FPS, Halloween, Cyberpunk, Aurora, Gamer WASD… New in 1.5: Paint party, Graffiti wall, Typing snake, Neon snake, Word waves, Drip drop, Falling stars, Rain on glass, VU meter, Studio monitor, Day & night and Circadian. Click one, then tweak it. Without a keyboard the preview plays pretend typing, music and mouse moves so you can see the reactive ones.
 - **Layers**: each layer is an effect on the keys and edge LEDs you select. Click, Ctrl+click or drag a box to select, or use **Quick select** (WASD, arrows, F-row, numpad, top/bottom/left/right edge, keyboard ring, numpad ring…). The top layer wins; transparent effects such as Reactive and Ripple let the layers below show through.
 - **Paint layers** (per-key colours): pick a colour and click or drag over keys and edge LEDs. There's an eraser, *Fill everything* and *Clear all*. This matches IO Center's per-key lighting, and it's faster.
 - **Edge LEDs**: all 96 are shown as rings around the keyboard (64) and the numpad (32). Tell OverMount which side your numpad is on.
-- **52 effects**: Static, Color wave, Tornado, Breathing, Matrix, Reactive, Ripple, Rainbow, Plasma, Aurora, Fire, Ocean, Twinkle, Rain, Heartbeat, Police, Scanner, Color cycle, CPU temperature, Performance meter, Typing heatmap, Audio pulse, Audio spectrum, Lava, Candy, Screen sync, Starfield, Fireworks, Comets, Lightning storm, Glitch, Radar, Disco, Snowfall, Bubbles, Embers, Fireflies, Keystroke lightning, Laser typing, Rainbow typing, Combo meter, Key sparks, Beat rings, Waveform, Club lights, Screen mood, Screen flash, Mouse spotlight, Soft press, Wake on type, Typing mood and Per-key colours.
+- **58 effects**: Static, Color wave, Tornado, Breathing, Matrix, Reactive, Ripple, Rainbow, Plasma, Aurora, Fire, Ocean, Twinkle, Rain, Heartbeat, Police, Scanner, Color cycle, CPU temperature, Performance meter, Typing heatmap, Audio pulse, Audio spectrum, Lava, Candy, Screen sync, Starfield, Fireworks, Comets, Lightning storm, Glitch, Radar, Disco, Snowfall, Bubbles, Embers, Fireflies, Keystroke lightning, Laser typing, Rainbow typing, Combo meter, Key sparks, Beat rings, Waveform, Club lights, Screen mood, Screen flash, Mouse spotlight, Soft press, Wake on type, Typing mood, Paint splash, Falling drops, Word waves (Space, Enter and Backspace each get their own moment), Typing snake, VU meter, Day & night (follows your clock) and Per-key colours.
 
+<p align="center"><img src="docs/images/app-lighting-library.png" alt="Presets with search, My presets and Favourites" width="80%"></p>
+<p align="center"><img src="docs/images/preset-gallery-150.png" alt="New in 1.5: Paint party, Graffiti wall, Typing snake, Neon snake, Word waves, Drip drop, Falling stars, Rain on glass, VU meter, Day and night" width="100%"></p>
 <p align="center"><img src="docs/images/preset-gallery.png" alt="Eight of the premade lighting scenes" width="100%"></p>
 <p align="center"><img src="docs/images/preset-gallery-everyday.png" alt="Everyday typing scenes: Night owl, Midnight blue, Red night vision, Lo-fi study, Daylight, Arctic, Office pro, Pastel pop, Ocean calm, Chameleon" width="100%"></p>
 <p align="center"><img src="docs/images/preset-gallery-reactive.png" alt="Reactive scenes: Keystroke lightning, Laser typing, Rainbow typing, Combo meter, Welding sparks, Beat rings, Nightclub, Oscilloscope, Mouse spotlight, Screen mood" width="100%"></p>
@@ -67,7 +72,7 @@ The Dark Mount's 320×240 media dock becomes a second screen:
 - **Auto mode** shows stats while a game runs, and your default screen otherwise.
 - **Smart screens** show *Now playing* for 20 s when a new song starts, and the *Focus timer* while it runs.
 - **Rotation** takes turns through the screens you pick (every 30 s by default).
-- **Alerts** trigger on a hot CPU/GPU, nearly full RAM/VRAM, or FPS drops in games. They show as a red banner, and the keyboard can flash red too.
+- **Alerts** (off until you turn them on in *Alerts*) trigger on a hot CPU/GPU, nearly full RAM/VRAM, or FPS drops in games. They show as a red banner, and the keyboard can flash red too.
 - **Ctrl+Alt+Shift+D** cycles dashboard → animation → be quiet! default screen. The tray menu has every screen.
 
 ---
@@ -76,7 +81,7 @@ The Dark Mount's 320×240 media dock becomes a second screen:
 
 1. **Download** [`OverMount-Setup.exe`](https://github.com/kosherplay-betatester/overmount/releases/latest/download/OverMount-Setup.exe) and run it. Windows may show *"Windows protected your PC"* because the app isn't code-signed. Click **More info → Run anyway**.
 2. Click **Install**. It installs for your account only, with no admin rights, and adds Start-menu and optional desktop shortcuts plus *Start with Windows*.
-3. **Exit IO Center** (right-click its tray icon → Exit). If it's still running, OverMount pauses and offers **Take control back** with one click.
+3. **Exit IO Center**. If it's running or starts with Windows, OverMount asks once whether to close it and turn off its autostart (the same switch as Task Manager → Startup apps, so it's easy to undo). Nothing is uninstalled.
 4. Double-click the tray icon (the glowing **WASD**). The **Home** page shows what's connected and runs a setup check that fixes common problems for you.
 
 <p align="center"><img src="docs/images/setup.png" alt="OverMount setup" width="520"></p>
@@ -167,7 +172,7 @@ OverMount checks GitHub for a new release once a day (you can turn this off). **
 
 **Why does the dock update only every ~5 seconds?** That's the hardware. The dock takes a full 320×240 picture in about 2.2 s and then needs a short rest to stay responsive. Smooth animation lives on the keyboard's RGB instead (up to 30 fps).
 
-**IO Center took over and OverMount stopped.** IO Center keeps driving the keyboard from its tray icon even after you close its window. Click the notification or the tray menu's **Take control back from IO Center**. OverMount closes it and resumes.
+**IO Center took over and OverMount stopped.** IO Center keeps driving the keyboard from its tray icon even after you close its window. Click the notification or the tray menu's **Take control back from IO Center**. OverMount closes it and resumes. To stop IO Center starting with Windows, use **Home → IO Center doesn't start with Windows → Turn off** (or Task Manager → Startup apps).
 
 **Studio lighting doesn't show.** Turn off Windows *Dynamic Lighting* for the keyboard (Settings → Personalization → Dynamic Lighting). The Home page checks this for you.
 

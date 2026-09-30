@@ -131,6 +131,12 @@ internal static partial class SceneShaders
         SceneEffect.SoftPress => SoftPress(f),
         SceneEffect.WakeOnType => WakeOnType(f),
         SceneEffect.TypingMood => TypingMood(f),
+        SceneEffect.PaintSplash => PaintSplash(f),
+        SceneEffect.KeyDrops => KeyDrops(f),
+        SceneEffect.WordWaves => WordWaves(f),
+        SceneEffect.TypingSnake => TypingSnake(f),
+        SceneEffect.VuMeter => VuMeter(f),
+        SceneEffect.DayNight => DayNight(f),
         _ => (in Pixel _) => Rgba.Clear,
     };
 

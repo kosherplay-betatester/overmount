@@ -12,10 +12,41 @@ public class AppLogicTests
 
     // ---------------------------------------------------------------- AlertEngine
 
+    static AlertSettings AllOn(bool gpu = true) => new()
+    {
+        CpuTempEnabled = true, GpuTempEnabled = gpu, RamEnabled = true, VramEnabled = true, FpsEnabled = true,
+    };
+
+    [Fact]
+    public void Alerts_are_off_by_default()
+    {
+        var e = new AlertEngine(new AlertSettings());
+
+        Assert.Empty(e.Evaluate(new Snapshot { CpuTemp = 99, GpuTemp = 99, RamUsedMb = 63000, RamTotalMb = 64000 }, T0));
+    }
+
+    [Fact]
+    public void Old_settings_files_get_alerts_switched_off_once()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"dmh-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, """{ "Alerts": { "CpuTempEnabled": true, "GpuTempEnabled": true, "FpsEnabled": true } }""");
+            var loaded = SettingsStore.Load(path);
+            Assert.False(loaded.Alerts.CpuTempEnabled || loaded.Alerts.GpuTempEnabled || loaded.Alerts.FpsEnabled);
+            Assert.True(loaded.AlertsOptIn);
+
+            loaded.Alerts.GpuTempEnabled = true; // the user turns one on: it stays on
+            SettingsStore.Save(path, loaded);
+            Assert.True(SettingsStore.Load(path).Alerts.GpuTempEnabled);
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public void No_alerts_for_normal_values()
     {
-        var e = new AlertEngine(new AlertSettings());
+        var e = new AlertEngine(AllOn());
         var s = new Snapshot { CpuTemp = 70, GpuTemp = 65, RamUsedMb = 10000, RamTotalMb = 64000 };
 
         Assert.Empty(e.Evaluate(s, T0));
@@ -25,7 +56,7 @@ public class AppLogicTests
     [Fact]
     public void Hot_gpu_raises_an_alert_and_it_is_new_once()
     {
-        var e = new AlertEngine(new AlertSettings());
+        var e = new AlertEngine(AllOn());
 
         var alerts = e.Evaluate(new Snapshot { GpuTemp = 91 }, T0);
         Assert.Equal("GPU 91°C", Assert.Single(alerts).Text);
@@ -38,7 +69,7 @@ public class AppLogicTests
     [Fact]
     public void Alert_is_held_for_ten_seconds_after_recovery()
     {
-        var e = new AlertEngine(new AlertSettings());
+        var e = new AlertEngine(AllOn());
         e.Evaluate(new Snapshot { CpuTemp = 95 }, T0);
 
         Assert.Single(e.Evaluate(new Snapshot { CpuTemp = 60 }, T0.AddSeconds(9)));
@@ -48,7 +79,7 @@ public class AppLogicTests
     [Fact]
     public void Memory_alerts_use_percentages()
     {
-        var e = new AlertEngine(new AlertSettings());
+        var e = new AlertEngine(AllOn());
         var s = new Snapshot { RamUsedMb = 59000, RamTotalMb = 64000, VramUsedMb = 15800, VramTotalMb = 16000 };
 
         var texts = e.Evaluate(s, T0).Select(a => a.Text).ToList();
@@ -60,19 +91,19 @@ public class AppLogicTests
     [Fact]
     public void Low_fps_needs_to_last_four_seconds_and_only_counts_in_game()
     {
-        var e = new AlertEngine(new AlertSettings());
+        var e = new AlertEngine(AllOn());
         var low = new Snapshot { Fps = 22, GameName = "game.exe" };
 
         Assert.Empty(e.Evaluate(low, T0));
         Assert.Empty(e.Evaluate(low, T0.AddSeconds(2)));
         Assert.Equal("FPS 22", Assert.Single(e.Evaluate(low, T0.AddSeconds(4))).Text);
-        Assert.Empty(new AlertEngine(new AlertSettings()).Evaluate(new Snapshot { Fps = 5 }, T0.AddSeconds(10)));
+        Assert.Empty(new AlertEngine(AllOn()).Evaluate(new Snapshot { Fps = 5 }, T0.AddSeconds(10)));
     }
 
     [Fact]
     public void Disabled_alerts_never_fire()
     {
-        var e = new AlertEngine(new AlertSettings { GpuTempEnabled = false });
+        var e = new AlertEngine(AllOn(gpu: false));
 
         Assert.Empty(e.Evaluate(new Snapshot { GpuTemp = 99 }, T0));
     }

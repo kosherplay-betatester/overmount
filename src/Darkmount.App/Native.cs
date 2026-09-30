@@ -69,7 +69,7 @@ public sealed class HotkeyWindow : NativeWindow, IDisposable
     static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }
 
-/// <summary>Start with Windows via HKCU\...\Run.</summary>
+/// <summary>Start with Windows via HKCU\...\Run (and Task Manager's Startup apps switch, which can turn it off).</summary>
 public static class Autostart
 {
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -83,14 +83,27 @@ public static class Autostart
     public static bool IsEnabledFor(string? exe)
     {
         using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-        return key?.GetValue(Name) is string v && string.Equals(v, Command(exe), StringComparison.OrdinalIgnoreCase);
+        return key?.GetValue(Name) is string v && string.Equals(v, Command(exe), StringComparison.OrdinalIgnoreCase)
+               && !IoCenter.StartupApproval.IsDisabled(Registry.CurrentUser, Name);
+    }
+
+    /// <summary>The user turned OverMount off in Task Manager → Startup apps.</summary>
+    public static bool IsDisabledInTaskManager()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+        return key?.GetValue(Name) is not null && IoCenter.StartupApproval.IsDisabled(Registry.CurrentUser, Name);
     }
 
     /// <param name="exe">The program to start (default: this one; the installer passes the installed copy).</param>
     public static void Set(bool enabled, string? exe = null)
     {
+        if (enabled && IsEnabledFor(exe)) return; // already so: don't rewrite the registry
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-        if (enabled) key.SetValue(Name, Command(exe));
+        if (enabled)
+        {
+            key.SetValue(Name, Command(exe));
+            IoCenter.StartupApproval.SetEnabled(Registry.CurrentUser, Name, true); // undo a Task Manager "Disable"
+        }
         else key.DeleteValue(Name, throwOnMissingValue: false);
     }
 }

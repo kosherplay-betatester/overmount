@@ -183,6 +183,24 @@ public static class SceneEffects
         new(SceneEffect.TypingMood, "Typing mood", "The whole keyboard slowly shifts from a calm colour to an active one the more you type.",
             [SceneColorMode.Dual, SceneColorMode.Gradient, SceneColorMode.Single], NoDirections, true, true, false, false, true)
             { DefaultColorMode = SceneColorMode.Dual, DefaultColors = ["00A0C8", "C040FF"] },
+        new(SceneEffect.PaintSplash, "Paint splash", "Every key you press throws a splash of paint that lands on top of the others, dries and fades (Gradient: a random colour each time).",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FF1F6B", "FFD000", "00E0FF", "7CFF3A", "B04DFF"] },
+        new(SceneEffect.KeyDrops, "Falling drops", "Each key you press lets a drop of light fall down the keyboard; it splashes along the bottom edge.",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["00B4FF", "00FFD0", "B0F0FF"] },
+        new(SceneEffect.WordWaves, "Word waves", "Space sends a wave sideways, Enter a burst up from the Enter key, Backspace blinks; other keys glow softly (colours: space, enter, backspace).",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["00E5FF", "B04DFF", "FF2040"] },
+        new(SceneEffect.TypingSnake, "Typing snake", "A glowing snake slithers from key to key along the path you type and curls away when you stop (colours run tail to head).",
+            AllModes, NoDirections, true, true, false, false, false)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["00FF88", "00C8FF", "B000FF"] },
+        new(SceneEffect.VuMeter, "VU meter", "Every key row is a level bar growing from the centre with the music (bass at the bottom); the frame fills up with the volume.",
+            [SceneColorMode.Gradient, SceneColorMode.Dual, SceneColorMode.Single], NoDirections, false, false, false, true, true)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["00FF40", "FFE600", "FF2000"] },
+        new(SceneEffect.DayNight, "Day & night", "Follows the clock: dim and warm at night, a sunrise glow in the morning, clean light by day, amber in the evening (Gradient: night, morning, day, evening).",
+            AllModes, NoDirections, false, false, false, false, true)
+            { DefaultColorMode = SceneColorMode.Gradient, DefaultColors = ["FF3010", "FFB070", "F0F4FF", "FF7A20"] },
         new(SceneEffect.PerKey, "Per-key colours", "Paint every key and edge LED its own colour, like IO Center's per-key lighting. " +
             "Unpainted lamps show the layers below.", NoModes, NoDirections, false, false, false, false, false),
     ];

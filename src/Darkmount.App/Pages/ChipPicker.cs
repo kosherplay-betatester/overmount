@@ -37,6 +37,9 @@ public sealed class ChipPicker : Control
 
     public event Action<Chip>? ChipClicked;
 
+    /// <summary>Right-click, the menu key or Shift+F10 on a chip; the point is where a menu should open (screen coordinates).</summary>
+    public event Action<Chip, Point>? ChipMenu;
+
     public IReadOnlyList<Chip> Chips => _chips;
 
     public void SetChips(IEnumerable<Chip> chips)
@@ -130,10 +133,11 @@ public sealed class ChipPicker : Control
     {
         base.OnMouseClick(e);
         int i = HitTest(e.Location);
-        if (e.Button != MouseButtons.Left || i < 0) return;
+        if (i < 0 || e.Button is not (MouseButtons.Left or MouseButtons.Right)) return;
         _focus = i;
         Focus();
-        ChipClicked?.Invoke(_chips[i]);
+        if (e.Button == MouseButtons.Right) ChipMenu?.Invoke(_chips[i], PointToScreen(e.Location));
+        else ChipClicked?.Invoke(_chips[i]);
     }
 
     protected override bool IsInputKey(Keys keyData) =>
@@ -160,6 +164,12 @@ public sealed class ChipPicker : Control
                 break;
             case Keys.Enter or Keys.Space:
                 if (_focus >= 0) ChipClicked?.Invoke(_chips[_focus]);
+                e.Handled = true;
+                return;
+            case Keys.Apps:
+            case Keys.F10 when e.Shift:
+                if (_focus >= 0 && _focus < _bounds.Count)
+                    ChipMenu?.Invoke(_chips[_focus], PointToScreen(new Point(_bounds[_focus].Left, _bounds[_focus].Bottom)));
                 e.Handled = true;
                 return;
             default: return;
