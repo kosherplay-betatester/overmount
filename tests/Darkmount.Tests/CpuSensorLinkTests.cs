@@ -60,5 +60,53 @@ public class CpuSensorLinkTests
                      "\"C:\\Program Files\\OverMount\\OverMountSensor.exe\" --sensor-helper\"", task.Descendants(ns + "Arguments").Single().Value);
         Assert.Equal("PT0S", task.Descendants(ns + "ExecutionTimeLimit").Single().Value);
         Assert.Single(task.Descendants(ns + "BootTrigger"));
+        // A helper that ended (e.g. crashed when the PC ran out of memory) is started again within 5 minutes;
+        // a running one isn't doubled.
+        Assert.Equal("PT5M", task.Descendants(ns + "TimeTrigger").Single().Descendants(ns + "Interval").Single().Value);
+        Assert.Equal("IgnoreNew", task.Descendants(ns + "MultipleInstancesPolicy").Single().Value);
+    }
+
+    [Fact]
+    public void Sensor_helper_survives_failed_readings_and_reopens_the_sensors()
+    {
+        Darkmount.App.Log.Enabled = false; // failures are logged: keep them out of the real log
+        int round = 0, reopened = 0;
+        var published = new List<double?>();
+        (double?, double?) Read()
+        {
+            round++;
+            if (round is >= 3 and <= 27) throw round % 2 == 0 ? new OutOfMemoryException() : new InvalidOperationException("driver hiccup");
+            return (40 + round, 20);
+        }
+
+        Darkmount.App.Helper.CpuSensorHelper.Poll(Read, () => reopened++, (t, _) => published.Add(t),
+            overMountRunning: () => true, keepGoing: () => round < 30, periodMs: 0);
+
+        Assert.Equal(30, round);                       // kept going through 25 failures
+        Assert.Equal(2, reopened);                     // after the 10th and 20th failure in a row
+        Assert.Equal([41, 42, 68, 69, 70], published);
+    }
+
+    [Fact]
+    public void An_older_sensor_copy_is_offered_an_update()
+    {
+        static bool Outdated(string? helper, string? app) => Darkmount.App.Setup.CpuSensorSetup.IsOutdated(
+            helper is null ? null : Version.Parse(helper), app is null ? null : Version.Parse(app));
+
+        Assert.True(Outdated("1.3.0.0", "1.5.1.0"));
+        Assert.False(Outdated("1.5.1.0", "1.5.1.0"));
+        Assert.False(Outdated("1.6.0.0", "1.5.1.0")); // never "update" to an older app
+        Assert.False(Outdated(null, "1.5.1.0"));      // not set up: nothing to update
+    }
+
+    [Fact]
+    public void Sensor_helper_does_not_read_while_overmount_is_closed()
+    {
+        Darkmount.App.Log.Enabled = false; // failures are logged: keep them out of the real log
+        int checks = 0, reads = 0;
+        Darkmount.App.Helper.CpuSensorHelper.Poll(() => { reads++; return (50, 10); }, () => { }, (_, _) => { },
+            overMountRunning: () => false, keepGoing: () => ++checks <= 5, periodMs: 0);
+
+        Assert.Equal(0, reads);
     }
 }

@@ -102,6 +102,9 @@ public sealed class AppSettings
     /// <summary>Alerts became opt-in (1.5). Older settings files had them on by default; they are switched off once.</summary>
     public bool AlertsOptIn { get; set; }
 
+    /// <summary>The app version for which the out-of-date CPU sensor update was last offered at start (asked once per version).</summary>
+    public string? SensorUpdateOfferedFor { get; set; }
+
     /// <summary>Don't ask at start to close IO Center and stop it starting with Windows (the user ticked "Don't ask again").</summary>
     public bool IoCenterDontAsk { get; set; }
 

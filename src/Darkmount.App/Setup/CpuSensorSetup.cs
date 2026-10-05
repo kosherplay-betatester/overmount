@@ -35,6 +35,27 @@ public static class CpuSensorSetup
 
     public static bool IsSetUp => File.Exists(HelperExe);
 
+    /// <summary>Version of the helper copy in Program Files; null when it isn't set up or can't be read.</summary>
+    public static Version? HelperVersion
+    {
+        get
+        {
+            try
+            {
+                return File.Exists(HelperExe) && Version.TryParse(FileVersionInfo.GetVersionInfo(HelperExe).FileVersion, out var v) ? v : null;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
+        }
+    }
+
+    public static Version? AppVersion => typeof(CpuSensorSetup).Assembly.GetName().Version;
+
+    /// <summary>
+    /// The helper copy is older than the app. Installs and updates run without admin rights, so they can't refresh the
+    /// copy in Program Files: only setting the sensor up again (one permission prompt) does.
+    /// </summary>
+    public static bool IsOutdated(Version? helper, Version? app) => helper is not null && app is not null && helper < app;
+
     public static bool PawnIoInstalled
     {
         get
@@ -121,13 +142,27 @@ public static class CpuSensorSetup
                 Log.Write($"winget install {PawnIoWingetId}: exit {rc}");
                 if (!PawnIoInstalled) return ExitNeedsPawnIo;
             }
-            StopHelper();
-            Directory.CreateDirectory(HelperDir);
-            if (Directory.Exists(ExtractDir)) Directory.Delete(ExtractDir, recursive: true); // unpacked again for this version
-            Directory.CreateDirectory(ExtractDir);
-            // The file that asked for this is the one that runs as SYSTEM. The release isn't code-signed, so there's no
-            // signature to check; Windows' permission prompt (for this very file) is the consent.
-            File.Copy(Environment.ProcessPath!, HelperExe, overwrite: true);
+            // The task's 5-minute trigger can start the old helper again in between: then its files are busy, so stop
+            // it and try again.
+            for (int attempt = 1; ; attempt++)
+            {
+                StopHelper();
+                try
+                {
+                    Directory.CreateDirectory(HelperDir);
+                    if (Directory.Exists(ExtractDir)) Directory.Delete(ExtractDir, recursive: true); // unpacked again for this version
+                    Directory.CreateDirectory(ExtractDir);
+                    // The file that asked for this is the one that runs as SYSTEM. The release isn't code-signed, so there's
+                    // no signature to check; Windows' permission prompt (for this very file) is the consent.
+                    File.Copy(Environment.ProcessPath!, HelperExe, overwrite: true);
+                    break;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException && attempt < 3)
+                {
+                    Log.Write($"CPU sensor files busy ({e.Message}); retrying");
+                    Thread.Sleep(1000);
+                }
+            }
 
             var xml = ProtectedTempFile("cpu-sensor-task.xml");
             File.WriteAllText(xml, TaskXml(HelperExe), System.Text.Encoding.Unicode);
@@ -187,8 +222,10 @@ public static class CpuSensorSetup
     }
 
     /// <summary>
-    /// The startup task: runs the helper as SYSTEM from boot (it only polls the CPU while OverMount runs), restarts it if
-    /// it fails, never stops it for running long or on battery. Pure, for tests.
+    /// The startup task: runs the helper as SYSTEM from boot (it only polls the CPU while OverMount runs), never stops it
+    /// for running long or on battery. RestartOnFailure only covers a start that fails, not a helper that ends later
+    /// (a crash when the PC ran out of memory left CPU temperature missing until the next reboot), so a second trigger
+    /// starts it every 5 minutes: if it's still running, that start is ignored (IgnoreNew). Pure, for tests.
     /// </summary>
     internal static string TaskXml(string helperExe) => TaskXml(helperExe, Path.Combine(Path.GetDirectoryName(helperExe)!, "runtime"));
 
@@ -223,6 +260,13 @@ public static class CpuSensorSetup
           </Settings>
           <Triggers>
             <BootTrigger />
+            <TimeTrigger>
+              <Repetition>
+                <Interval>PT5M</Interval>
+                <StopAtDurationEnd>false</StopAtDurationEnd>
+              </Repetition>
+              <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+            </TimeTrigger>
           </Triggers>
           <Actions Context="Author">
             <Exec>

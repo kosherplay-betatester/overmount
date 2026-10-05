@@ -48,7 +48,10 @@ public sealed class TrayApp : ApplicationContext
     readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 20_000 };
     readonly System.Windows.Forms.Timer _companionsTimer = new();
     readonly System.Windows.Forms.Timer _ioCenterTimer = new();
-    bool _ioPromptOpen;
+    readonly System.Windows.Forms.Timer _sensorUpdateTimer = new();
+    bool _ioPromptOpen, _updatingSensor;
+    Version? _sensorVersion;
+    DateTime _sensorVersionCheckedAt;
     Setup.ReleaseInfo? _latestRelease;
     DateTime _lastUpdateCheck;
     bool _updating;
@@ -114,11 +117,28 @@ public sealed class TrayApp : ApplicationContext
             };
             _companionsTimer.Start();
         }
+        if (_settings.SensorUpdateOfferedFor != Setup.CpuSensorSetup.AppVersion?.ToString())
+        {
+            // After an update: the CPU sensor copy in Program Files may still be the old version (one prompt fixes it).
+            _sensorUpdateTimer.Interval = Environment.TickCount64 < 5 * 60 * 1000 ? 60_000 : 8_000;
+            _sensorUpdateTimer.Tick += async (_, _) =>
+            {
+                if (_ioPromptOpen) return; // one question at a time; try again on the next tick
+                _sensorUpdateTimer.Stop();
+                await OfferSensorUpdate();
+            };
+            _sensorUpdateTimer.Start();
+        }
         if (!_settings.IoCenterDontAsk)
         {
             // Right after logon give IO Center's own autostart time to launch it, so one question covers both.
             _ioCenterTimer.Interval = Environment.TickCount64 < 5 * 60 * 1000 ? 12_000 : 2_500;
-            _ioCenterTimer.Tick += (_, _) => { _ioCenterTimer.Stop(); OfferToRetireIoCenter(); };
+            _ioCenterTimer.Tick += (_, _) =>
+            {
+                if (_ioPromptOpen) return; // another start-up question is open: ask on the next tick
+                _ioCenterTimer.Stop();
+                OfferToRetireIoCenter();
+            };
             _ioCenterTimer.Start();
         }
         _overlayTimer.Start();
@@ -329,10 +349,14 @@ public sealed class TrayApp : ApplicationContext
                 ioCenterAutostart ? "IO Center starts at sign-in and takes the keyboard from OverMount. Turn its autostart off (you can undo it in Task Manager → Startup apps)."
                     : "Only OverMount starts with Windows.",
                 "Turn off", DisableIoCenterAutostart),
-            new("CPU temperature", _pipeline.LastSnapshot?.CpuTemp is not null, false,
-                _pipeline.LastSnapshot?.CpuTemp is not null ? "CPU temperature is being read."
-                    : "Windows can't read CPU temperature by itself. Set up OverMount's own CPU sensor (one Windows permission " +
-                      "prompt), or run MSI Afterburner or HWiNFO.", "Set up", ShowCompanions),
+            SensorOutdated() is { } old
+                ? new("CPU sensor is up to date", false, false,
+                    $"OverMount's CPU sensor is still version {old.ToString(3)}; updates can't replace it by themselves (it runs with " +
+                    "admin rights). Update it with one Windows permission prompt.", "Update", () => _ = UpdateSensor())
+                : new("CPU temperature", _pipeline.LastSnapshot?.CpuTemp is not null, false,
+                    _pipeline.LastSnapshot?.CpuTemp is not null ? "CPU temperature is being read."
+                        : "Windows can't read CPU temperature by itself. Set up OverMount's own CPU sensor (one Windows permission " +
+                          "prompt), or run MSI Afterburner or HWiNFO.", "Set up", ShowCompanions),
             new("MSI Afterburner (optional)", !hints.Contains(Darkmount.Sensors.SensorHub.HintAfterburner), true,
                 "Extra sensors (GPU watts on AMD and Intel cards) and it starts RivaTuner with Windows.", "Set up", ShowCompanions),
             new("RivaTuner Statistics Server is running", !hints.Contains(Darkmount.Sensors.SensorHub.HintRtss), false,
@@ -600,6 +624,80 @@ public sealed class TrayApp : ApplicationContext
         if (needed && !_exiting) ShowCompanions();
     }
 
+    /// <summary>The CPU sensor copy's version when it is older than the app (checked at most every 30 s); else null.</summary>
+    Version? SensorOutdated()
+    {
+        if (DateTime.UtcNow - _sensorVersionCheckedAt > TimeSpan.FromSeconds(30))
+        {
+            _sensorVersionCheckedAt = DateTime.UtcNow;
+            _sensorVersion = Setup.CpuSensorSetup.HelperVersion;
+        }
+        return Setup.CpuSensorSetup.IsOutdated(_sensorVersion, Setup.CpuSensorSetup.AppVersion) ? _sensorVersion : null;
+    }
+
+    /// <summary>Once per app version: if the CPU sensor copy is older than the app, offer to update it.</summary>
+    async Task OfferSensorUpdate()
+    {
+        if (_exiting || _ioPromptOpen) return;
+        _ioPromptOpen = true; // from the first await: no other start-up question opens on top of this one
+        TaskDialogButton? result = null;
+        TaskDialogButton update = new("Update now");
+        try
+        {
+            var app = Setup.CpuSensorSetup.AppVersion;
+            var helper = await Task.Run(() => Setup.CpuSensorSetup.HelperVersion);
+            _settings.SensorUpdateOfferedFor = app?.ToString();
+            SaveSettings();
+            if (!Setup.CpuSensorSetup.IsOutdated(helper, app) || _exiting) return;
+            result = TaskDialog.ShowDialog(SensorUpdatePage(app!, helper!, update), TaskDialogStartupLocation.CenterScreen);
+        }
+        finally { _ioPromptOpen = false; }
+        if (result == update) await UpdateSensor();
+    }
+
+    static TaskDialogPage SensorUpdatePage(Version app, Version helper, TaskDialogButton update)
+    {
+        var page = new TaskDialogPage
+        {
+            Caption = "OverMount",
+            Heading = "Update OverMount's CPU sensor",
+            Text = $"OverMount was updated to {app.ToString(3)}, but its CPU sensor (which reads CPU temperature) is still " +
+                   $"version {helper.ToString(3)}. It runs with admin rights, so updates can't replace it by themselves.\n\n" +
+                   "Windows will ask for permission once. You can also do it later from Home.",
+            Icon = TaskDialogIcon.Information,
+            AllowCancel = true,
+        };
+        page.Buttons.Add(update);
+        page.Buttons.Add(new TaskDialogButton("Not now"));
+        return page;
+    }
+
+    /// <summary>Copies this version of OverMount over the CPU sensor and restarts it (one permission prompt).</summary>
+    async Task UpdateSensor()
+    {
+        if (_updatingSensor) return;
+        _updatingSensor = true;
+        try
+        {
+            var result = await Task.Run(Setup.CpuSensorSetup.SetUpAsync); // off the UI thread: the prompt blocks the caller
+            _sensorVersionCheckedAt = DateTime.MinValue;
+            Log.Write($"CPU sensor update: {result}");
+            switch (result)
+            {
+                case Setup.CpuSensorSetup.Result.Running:
+                    Balloon("OverMount", "The CPU sensor is updated and running.");
+                    break;
+                case Setup.CpuSensorSetup.Result.Declined:
+                    Balloon("OverMount", "CPU sensor not updated (permission declined). You can update it from Home.");
+                    break;
+                default:
+                    Balloon("OverMount", "The CPU sensor could not be updated. Try again from Home → CPU sensor.", ToolTipIcon.Warning);
+                    break;
+            }
+        }
+        finally { _updatingSensor = false; }
+    }
+
     // ---------------------------------------------------------------- updates
 
     async Task<Setup.ReleaseInfo?> CheckForUpdates()
@@ -732,6 +830,7 @@ public sealed class TrayApp : ApplicationContext
         _updateTimer.Stop();
         _companionsTimer.Stop();
         _ioCenterTimer.Stop();
+        _sensorUpdateTimer.Stop();
         _tickTimer.Dispose();
         _pipeline.Dispose();
         _rgb.Dispose();

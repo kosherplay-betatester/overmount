@@ -10,46 +10,150 @@ namespace Darkmount.App.Helper;
 /// because CPU temperature needs the PawnIO driver, which only administrators may use. Reads the CPU's temperature and
 /// package watts with LibreHardwareMonitor once a second while OverMount runs, and publishes them in
 /// <see cref="CpuSensorLink.MappingName"/> for the app. Only the CPU is opened (no fans, disks, controllers or network).
+/// It runs for days, so a failed reading (a driver hiccup, or the PC running out of memory) is logged and retried rather
+/// than ending the process; the startup task also starts it again every few minutes if it is gone.
 /// </summary>
 static class CpuSensorHelper
 {
     const string SingleInstance = @"Global\OverMountCpuSensor.Helper";
 
+    /// <summary>Reopen the sensor library after this many failed readings in a row.</summary>
+    internal const int ReopenAfterFailures = 10;
+
+    /// <summary>Repeated failures are logged at most this often, so a long outage can't fill the disk.</summary>
+    internal const long LogEveryMs = 10 * 60 * 1000;
+
     public static int Run()
     {
+        LogCrashes();
         using var single = new Mutex(true, SingleInstance, out bool first);
         if (!first) return 0;
+        Log.Prune();
 
         var mapping = CreateMapping(out nint view);
-        if (mapping == 0) return 3;
-        Computer? computer = null;
+        if (mapping == 0)
+        {
+            Log.Write("CPU sensor helper: the shared memory could not be created");
+            return 3;
+        }
+        var blob = new byte[CpuSensorLink.Size];
+        using var cpu = new CpuSource();
         try
         {
-            computer = new Computer { IsCpuEnabled = true };
-            computer.Open();
-            var blob = new byte[CpuSensorLink.Size];
-            while (true)
+            Poll(cpu.Read, cpu.Reopen, (temp, power) =>
             {
-                if (IsOverMountRunning())
-                {
-                    var (temp, power) = Read(computer);
-                    CpuSensorLink.Encode(blob, temp, power, Environment.TickCount64);
-                    Marshal.Copy(blob, 0, view, blob.Length);
-                    Thread.Sleep(1000);
-                }
-                else Thread.Sleep(5000); // nothing to do until OverMount starts again
-            }
-        }
-        catch (Exception e)
-        {
-            Log.Write($"CPU sensor helper stopped: {e}");
-            return 1;
+                CpuSensorLink.Encode(blob, temp, power, Environment.TickCount64);
+                Marshal.Copy(blob, 0, view, blob.Length);
+            }, IsOverMountRunning, keepGoing: () => true);
+            return 0;
         }
         finally
         {
-            computer?.Close();
             UnmapViewOfFile(view);
             CloseHandle(mapping);
+        }
+    }
+
+    /// <summary>
+    /// The polling loop: every <paramref name="periodMs"/> while OverMount runs (5 × that while it doesn't), read and
+    /// publish. An exception in one round is logged (rate-limited) and the next round backs off a little, up to 30
+    /// periods; after <see cref="ReopenAfterFailures"/> failures in a row the sensors are reopened. Nothing in a round
+    /// can end the loop. Allocates nothing that outlives a round.
+    /// </summary>
+    internal static void Poll(Func<(double? Temp, double? Power)> read, Action reopen, Action<double?, double?> publish,
+        Func<bool> overMountRunning, Func<bool> keepGoing, int periodMs = 1000)
+    {
+        int failures = 0;
+        long lastLogged = long.MinValue / 2;
+        while (keepGoing())
+        {
+            int sleep = periodMs * 5; // nothing to do until OverMount starts again
+            try
+            {
+                if (overMountRunning())
+                {
+                    var (temp, power) = read();
+                    publish(temp, power);
+                    if (failures > 0 && Environment.TickCount64 - lastLogged >= LogEveryMs)
+                    {
+                        lastLogged = Environment.TickCount64; // same limit as failures, so a flapping sensor can't flood the log
+                        SafeLog(() => $"CPU sensor helper: readings are back after {failures} failed attempts");
+                    }
+                    failures = 0;
+                    sleep = periodMs;
+                }
+            }
+            catch (Exception e)
+            {
+                failures++;
+                long now = Environment.TickCount64;
+                if (failures == 1 || now - lastLogged >= LogEveryMs)
+                {
+                    lastLogged = now;
+                    SafeLog(() => $"CPU sensor helper: reading failed ({failures} in a row): {e}");
+                }
+                if (failures % ReopenAfterFailures == 0)
+                {
+                    try { reopen(); }
+                    catch (Exception again) { SafeLog(() => $"CPU sensor helper: reopening the sensors failed: {again.Message}"); }
+                }
+                sleep = periodMs * Math.Min(failures, 30);
+            }
+            Thread.Sleep(sleep);
+        }
+    }
+
+    /// <summary>Builds and writes a log line; never throws (even out of memory, building the text can fail).</summary>
+    static void SafeLog(Func<string> message)
+    {
+        try { Log.Write(message()); }
+        catch (Exception) { /* logging must never end the helper */ }
+    }
+
+    /// <summary>Whatever still escapes is written to the log before the process ends, so the next crash has a cause.</summary>
+    static void LogCrashes()
+    {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            SafeLog(() => $"CPU sensor helper crashed{(e.IsTerminating ? "" : " (not terminating)")}: {e.ExceptionObject}");
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            SafeLog(() => $"CPU sensor helper: unobserved task exception: {e.Exception}");
+            e.SetObserved();
+        };
+    }
+
+    /// <summary>LibreHardwareMonitor's CPU sensors, opened on first use and reopened after repeated failures.</summary>
+    sealed class CpuSource : IDisposable
+    {
+        Computer? _computer;
+
+        public (double? Temp, double? Power) Read()
+        {
+            if (_computer is null)
+            {
+                var computer = new Computer { IsCpuEnabled = true };
+                try { computer.Open(); }
+                catch
+                {
+                    try { computer.Close(); } catch (Exception) { /* already failing: the open error is the one that matters */ }
+                    throw; // whatever opened before the failure is released, so retries can't pile up driver handles
+                }
+                _computer = computer;
+            }
+            return CpuSensorHelper.Read(_computer);
+        }
+
+        public void Reopen()
+        {
+            var old = _computer;
+            _computer = null; // opened again on the next read, even if closing this one fails
+            old?.Close();
+        }
+
+        public void Dispose()
+        {
+            try { Reopen(); }
+            catch (Exception e) { SafeLog(() => $"CPU sensor helper: closing the sensors failed: {e.Message}"); }
         }
     }
 

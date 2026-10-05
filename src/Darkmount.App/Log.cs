@@ -23,7 +23,7 @@ public static class Log
                 File.AppendAllText(Path.Combine(Dir, $"{DateTime.Now:yyyy-MM-dd}.log"), $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
             }
         }
-        catch (IOException) { /* logging must never crash the app */ }
+        catch (Exception) { /* logging must never crash the app (full disk, no access, out of memory…) */ }
     }
 
     public static void Prune()
