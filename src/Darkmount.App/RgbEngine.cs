@@ -111,10 +111,11 @@ public sealed class RgbEngine : IDisposable
                 bool welcome = s.RgbEnabled && _clock.Elapsed.TotalSeconds < _welcomeUntil;
                 bool wanted = s.RgbEnabled || alert;
 
-                if (!wanted || IoCenterDetector.IsRunning())
+                bool ioCenter = IoCenterRunning();
+                if (!wanted || ioCenter)
                 {
                     _audio.SetActive(false);
-                    HandBack(IoCenterDetector.IsRunning() ? "Paused: IO Center is running" : "Off (keyboard's own effect)");
+                    HandBack(ioCenter ? "Paused: IO Center is running" : "Off (keyboard's own effect)");
                     Thread.Sleep(250);
                     continue;
                 }
@@ -213,6 +214,24 @@ public sealed class RgbEngine : IDisposable
             }
         }
         HandBack("Off");
+    }
+
+    long _ioCenterCheckedAt = long.MinValue / 2;
+    bool _ioCenterRunning;
+
+    /// <summary>
+    /// Whether IO Center runs, checked at most every 2 s. The check lists every process on the PC (~4 ms with 400 of
+    /// them); done for each frame at 30 fps it was most of OverMount's CPU time.
+    /// </summary>
+    bool IoCenterRunning()
+    {
+        long now = Environment.TickCount64;
+        if (now - _ioCenterCheckedAt >= 2000)
+        {
+            _ioCenterRunning = IoCenterDetector.IsRunning();
+            _ioCenterCheckedAt = now;
+        }
+        return _ioCenterRunning;
     }
 
     /// <summary>A bright band sweeping left → right with a be quiet! orange trail.</summary>
