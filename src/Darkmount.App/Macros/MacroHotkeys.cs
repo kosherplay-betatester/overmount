@@ -41,7 +41,7 @@ public sealed class MacroHotkeys : NativeWindow, IDisposable
 {
     const int WmHotkey = 0x0312;
     const int FirstId = 0x1000;
-    const uint ModAlt = 0x1, ModControl = 0x2, ModShift = 0x4, ModNoRepeat = 0x4000;
+    const uint ModAlt = 0x1, ModControl = 0x2, ModShift = 0x4, ModWin = 0x8, ModNoRepeat = 0x4000;
     const int ErrorHotkeyAlreadyRegistered = 1409;
 
     readonly IHotkeyApi _api;
@@ -75,9 +75,14 @@ public sealed class MacroHotkeys : NativeWindow, IDisposable
         {
             if (macro is null || !macro.Enabled) continue;
             var trigger = macro.Trigger;
-            if (trigger is null || !trigger.IsValid)
+            if (trigger is null || !Enum.IsDefined(trigger.Key))
             {
-                failures.Add(new(macro, "No trigger key set (F13–F24)."));
+                failures.Add(new(macro, "No trigger key set."));
+                continue;
+            }
+            if (!trigger.IsValid)
+            {
+                failures.Add(new(macro, $"{trigger}: {trigger.Problem}"));
                 continue;
             }
             if (owners.TryGetValue(trigger, out var owner))
@@ -104,7 +109,8 @@ public sealed class MacroHotkeys : NativeWindow, IDisposable
 
     /// <summary>RegisterHotKey fsModifiers for a trigger (always with MOD_NOREPEAT).</summary>
     public static uint HotkeyModifiers(MacroTrigger trigger)
-        => ModNoRepeat | (trigger.Ctrl ? ModControl : 0) | (trigger.Shift ? ModShift : 0) | (trigger.Alt ? ModAlt : 0);
+        => ModNoRepeat | (trigger.Ctrl ? ModControl : 0) | (trigger.Shift ? ModShift : 0) | (trigger.Alt ? ModAlt : 0)
+           | (trigger.Win ? ModWin : 0);
 
     protected override void WndProc(ref Message m)
     {

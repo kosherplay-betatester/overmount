@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Darkmount.App.Input;
+using Darkmount.App.LightDevices;
 using Darkmount.App.Overlays;
 using Darkmount.Dock;
 using Darkmount.Keyboard.Lamps;
@@ -9,13 +10,17 @@ using Darkmount.Sensors;
 namespace Darkmount.App;
 
 /// <summary>
-/// Drives the keyboard's LEDs through the standard HID LampArray interface: the Lighting-studio scene (layers of
-/// effects, up to ~30 fps), live overlays (lock keys, volume bar, mic mute, shortcut helper, focus timer), the alert
-/// flash, a welcome sweep, and fading out while the PC is locked or idle. Whenever it has nothing to show (or IO Center
-/// / Windows Dynamic Lighting owns the LEDs) it hands the lighting back to the keyboard's own effect.
+/// Draws the Lighting-studio scene (layers of effects, up to ~30 fps), live overlays (lock keys, volume bar, mic mute,
+/// shortcut helper, focus timer), the alert flash, a welcome sweep, and fading out while the PC is locked or idle on
+/// every RGB keyboard it finds: a be quiet! keyboard, any keyboard or laptop with the Windows Dynamic Lighting standard
+/// (HID LampArray), and keyboards OpenRGB controls. Each device gets the same scene laid out over its own lamps.
+/// Whenever it has nothing to show (or IO Center / Windows Dynamic Lighting owns a device) it hands that device's
+/// lighting back to its own effect.
 /// </summary>
-public sealed class RgbEngine : IDisposable
+public sealed partial class RgbEngine : IDisposable
 {
+    const int FrameMs = 33;
+
     readonly Func<AppSettings> _settings;
     readonly Func<Snapshot?> _snapshot;
     readonly Func<bool> _alertActive;
@@ -31,27 +36,23 @@ public sealed class RgbEngine : IDisposable
     volatile bool _stop;
     volatile bool _locked;
 
-    LampArrayDevice? _device;
-    IReadOnlyList<LampPoint> _layout = [];
-    Dictionary<int, int> _lampOfKey = [];
-    readonly Dictionary<int, LampColor> _sent = [];
+    readonly List<ILightOutput> _outputs = [];
+    readonly Dictionary<ILightOutput, double> _lastSent = [];
     IReadOnlyList<LampColor> _screenGrid = [];
     DateTime _nextScreenSample;
-    Darkmount.Keyboard.NumpadSide _numpadSide;
     double _fade = 1, _welcomeUntil;
-    bool _hostControl;
 
     public string Status { get; private set; } = "Off";
     public double Fps { get; private set; }
 
-    /// <summary>The latest rendered frame (lamp id → colour) for the Lighting studio's live preview.</summary>
+    /// <summary>The latest frame drawn on the be quiet! keyboard (lamp id → colour), for the Lighting studio's live preview.</summary>
     public IReadOnlyDictionary<int, LampColor> LastFrame { get; private set; } = new Dictionary<int, LampColor>();
 
-    /// <summary>Lamp positions once the keyboard's lighting interface has been opened (for the studio preview).</summary>
-    public IReadOnlyList<LampPoint> Layout => _layout;
+    /// <summary>The be quiet! keyboard's lamp positions once its lighting interface is open (for the studio preview).</summary>
+    public IReadOnlyList<LampPoint> Layout => BeQuiet?.Layout ?? [];
 
     /// <summary>Edge-light number (1..96) → lamp id, once the lighting interface has been opened.</summary>
-    public IReadOnlyDictionary<int, int> EdgeLights => EdgeMap(_layout);
+    public IReadOnlyDictionary<int, int> EdgeLights => EdgeMap(Layout);
 
     static IReadOnlyDictionary<int, int> EdgeMap(IReadOnlyList<LampPoint> layout) =>
         layout.Where(p => p.Edge > 0).GroupBy(p => p.Edge).ToDictionary(g => g.Key, g => g.First().LampId);
@@ -62,7 +63,7 @@ public sealed class RgbEngine : IDisposable
     /// </summary>
     public IReadOnlyDictionary<int, int> ReadEdgeLights()
     {
-        if (_layout.Count > 0) return EdgeLights;
+        if (Layout.Count > 0) return EdgeLights;
         try
         {
             using var device = LampArrayDevice.Open();
@@ -86,6 +87,7 @@ public sealed class RgbEngine : IDisposable
         _clock = clock;
         _thread = new Thread(Run) { IsBackground = true, Name = "RGB engine" };
         Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
+        HidSharp.DeviceList.Local.Changed += OnDevicesChanged;
     }
 
     void OnSessionSwitch(object? sender, Microsoft.Win32.SessionSwitchEventArgs e) =>
@@ -104,6 +106,7 @@ public sealed class RgbEngine : IDisposable
         int frames = 0;
         while (!_stop)
         {
+            var frameStart = Stopwatch.GetTimestamp();
             try
             {
                 var s = _settings();
@@ -111,17 +114,24 @@ public sealed class RgbEngine : IDisposable
                 bool welcome = s.RgbEnabled && _clock.Elapsed.TotalSeconds < _welcomeUntil;
                 bool wanted = s.RgbEnabled || alert;
 
-                bool ioCenter = IoCenterRunning();
-                if (!wanted || ioCenter)
+                if (!wanted)
                 {
                     _audio.SetActive(false);
-                    HandBack(ioCenter ? "Paused: IO Center is running" : "Off (keyboard's own effect)");
+                    HandBackAll();
+                    Status = "Off (keyboard's own effect)";
                     Thread.Sleep(250);
                     continue;
                 }
-                if (_device is not null && s.NumpadSide != _numpadSide) CloseDevice(handBack: false); // re-lay out the keys
-                if (!EnsureDevice()) { Thread.Sleep(2000); continue; }
-                if (!_hostControl) { _device!.SetAutonomousMode(false); _hostControl = true; _sent.Clear(); }
+                bool ioCenter = IoCenterRunning();
+                UpdateOutputs(s, ioCenter);
+                if (_outputs.Count == 0)
+                {
+                    _audio.SetActive(false);
+                    Status = ioCenter ? "Paused: IO Center is running" : _noDeviceStatus;
+                    Fps = 0;
+                    Thread.Sleep(250);
+                    continue;
+                }
 
                 var scene = s.Scene ?? ScenePresets.All[0];
                 bool needsAudio = scene.Layers.Any(l => l.Enabled && SceneEffects.Get(l.Effect).NeedsAudio);
@@ -140,53 +150,70 @@ public sealed class RgbEngine : IDisposable
                 if (needsAudio) _beats.Feed(t, bands, level);
                 if (needsMouse) _mouse.Poll(t);
                 var snap = _snapshot();
-                var ctx = new SceneContext
+                var pressTimes = _keys?.PressTimes ?? new Dictionary<int, double>();
+                var heat = _keys?.Heat() ?? new Dictionary<int, double>();
+                var presses = _keys?.RecentPresses(4) ?? [];
+                var overlay = _overlayState();
+                double localHours = DateTime.Now.TimeOfDay.TotalHours;
+                SceneContext Context(IReadOnlyList<LampPoint> lamps) => new()
                 {
                     Seconds = t,
-                    Lamps = _layout,
-                    KeyPressTimes = _keys?.PressTimes ?? new Dictionary<int, double>(),
-                    KeyHeat = _keys?.Heat() ?? new Dictionary<int, double>(),
+                    Lamps = lamps,
+                    KeyPressTimes = pressTimes,
+                    KeyHeat = heat,
                     CpuTemp = snap?.CpuTemp, CpuLoad = snap?.CpuLoad, GpuTemp = snap?.GpuTemp, GpuLoad = snap?.GpuLoad,
                     AudioLevel = level,
                     AudioBands = bands,
                     ScreenGrid = _screenGrid,
                     ScreenGridWidth = ScreenSampler.GridWidth,
                     ScreenGridHeight = ScreenSampler.GridHeight,
-                    KeyPresses = _keys?.RecentPresses(4) ?? [],
+                    KeyPresses = presses,
                     BeatTimes = needsAudio ? _beats.Beats : [],
                     ScreenFlashes = needsScreen ? _flashes.Flashes : [],
                     MouseX = needsMouse ? _mouse.X : null,
                     MouseY = needsMouse ? _mouse.Y : null,
                     MouseClicks = needsMouse ? _mouse.Clicks : [],
-                    LocalHours = DateTime.Now.TimeOfDay.TotalHours,
+                    LocalHours = localHours,
                 };
-
-                Dictionary<int, LampColor> frame;
-                if (alert)
-                {
-                    var c = (long)(t * 1000 / 350) % 2 == 0 ? new LampColor(255, 0, 0) : new LampColor(40, 0, 0);
-                    frame = _layout.ToDictionary(p => p.LampId, _ => c);
-                    Status = "Alert flash";
-                }
-                else if (welcome)
-                {
-                    frame = Welcome(t);
-                    Status = "Welcome";
-                }
-                else
-                {
-                    frame = SceneRenderer.Render(scene, ctx);
-                    LightingOverlays.Apply(frame, s.Overlays, _overlayState(), k => _lampOfKey.TryGetValue(k, out int l) ? l : null);
-                    Status = $"{scene.Name}";
-                }
 
                 // Fade out while the PC is locked or idle, fade back in when the user returns.
                 bool dark = s.RgbDimWhenLocked && (_locked || IdleSeconds() > s.RgbIdleMinutes * 60 && s.RgbIdleMinutes > 0);
                 _fade = Math.Clamp(_fade + (dark ? -0.05 : 0.1), 0, 1);
-                if (_fade < 1) foreach (var id in frame.Keys.ToList()) frame[id] = Scale(frame[id], _fade);
+                Status = alert ? "Alert flash" : welcome ? "Welcome" : DevicesStatus(scene.Name);
 
-                LastFrame = frame;
-                Send(frame);
+                foreach (var output in _outputs.ToList())
+                {
+                    if (_lastSent.TryGetValue(output, out double last) && t - last < 1 / output.MaxFps - 0.004) continue; // slower devices
+                    Dictionary<int, LampColor> frame;
+                    if (alert)
+                    {
+                        var c = (long)(t * 1000 / 350) % 2 == 0 ? new LampColor(255, 0, 0) : new LampColor(40, 0, 0);
+                        frame = output.Layout.ToDictionary(p => p.LampId, _ => c);
+                    }
+                    else if (welcome) frame = Welcome(t, output.Layout);
+                    else
+                    {
+                        frame = SceneRenderer.Render(scene, Context(output.Layout));
+                        LightingOverlays.Apply(frame, s.Overlays, overlay, k => output.LampOfKey.TryGetValue(k, out int l) ? l : null);
+                    }
+                    if (_fade < 1) foreach (var id in frame.Keys.ToList()) frame[id] = Scale(frame[id], _fade);
+                    if (output.Via == LightVia.BeQuiet) LastFrame = frame;
+                    try
+                    {
+                        output.Send(frame);
+                        _lastSent[output] = t;
+                    }
+                    catch (Exception e) when (e is IOException or TimeoutException or ObjectDisposedException or InvalidOperationException
+                                                  or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+                    {
+                        Log.Write($"RGB engine: {output.Name}: {e.Message}");
+                        Drop(output, handBack: false, $"Lost the connection ({e.Message}); retrying");
+                        // Try again after a pause, not every frame (a device that opens but refuses colours would loop).
+                        long retry = Environment.TickCount64 + (output.Via == LightVia.BeQuiet ? 2000 : 5000);
+                        if (output.Via == LightVia.BeQuiet) Interlocked.Exchange(ref _nextBeQuietTry, retry);
+                        else if (output.Via == LightVia.WindowsStandard) _nextScan = retry;
+                    }
+                }
 
                 frames++;
                 if (fpsWindow.ElapsedMilliseconds >= 2000)
@@ -195,12 +222,14 @@ public sealed class RgbEngine : IDisposable
                     frames = 0;
                     fpsWindow.Restart();
                 }
+                int spent = (int)Stopwatch.GetElapsedTime(frameStart).TotalMilliseconds;
+                if (spent < FrameMs) Thread.Sleep(FrameMs - spent);
             }
             catch (Exception e) when (e is IOException or TimeoutException or ObjectDisposedException or InvalidOperationException
                                           or UnauthorizedAccessException or InvalidDataException)
             {
                 Log.Write($"RGB engine: {e.Message}");
-                CloseDevice(handBack: false);
+                CloseAll(handBack: false);
                 Status = "Keyboard lighting not available";
                 Thread.Sleep(2000);
             }
@@ -208,13 +237,16 @@ public sealed class RgbEngine : IDisposable
             {
                 // A bug in a scene must never end the app (this is a raw thread): hand the LEDs back and retry.
                 Log.Write($"RGB engine error: {e}");
-                try { CloseDevice(handBack: true); } catch (Exception) { }
+                try { CloseAll(handBack: true); } catch (Exception) { }
                 Status = "Lighting error (see the log); retrying";
                 Thread.Sleep(2000);
             }
         }
-        HandBack("Off");
+        CloseAll(handBack: true);
+        Status = "Off";
     }
+
+    string DevicesStatus(string scene) => _outputs.Count == 1 ? scene : $"{scene} on {_outputs.Count} devices";
 
     long _ioCenterCheckedAt = long.MinValue / 2;
     bool _ioCenterRunning;
@@ -235,10 +267,10 @@ public sealed class RgbEngine : IDisposable
     }
 
     /// <summary>A bright band sweeping left → right with a be quiet! orange trail.</summary>
-    Dictionary<int, LampColor> Welcome(double t)
+    Dictionary<int, LampColor> Welcome(double t, IReadOnlyList<LampPoint> layout)
     {
         double x = 1 - (_welcomeUntil - t) / 2.2 * 1.3;
-        return _layout.ToDictionary(p => p.LampId, p =>
+        return layout.ToDictionary(p => p.LampId, p =>
         {
             double d = x - p.X;
             if (d < 0) return new LampColor(0, 0, 0);
@@ -246,49 +278,6 @@ public sealed class RgbEngine : IDisposable
             double k = Math.Max(0, 1 - d * 1.5);
             return new LampColor((byte)(255 * k), (byte)(40 * k), 0);
         });
-    }
-
-    bool EnsureDevice()
-    {
-        if (_device is not null) return true;
-        var device = LampArrayDevice.Open();
-        if (device is null) { Status = "Keyboard lighting interface not found"; return false; }
-        if (device.DevicePath is { } path && DynamicLighting.Read(path).WindowsMayDrive)
-        {
-            device.Dispose();
-            Status = "Windows Dynamic Lighting controls the keyboard (see Home → Setup check)";
-            return false;
-        }
-        var lamps = device.Lamps;
-        _numpadSide = _settings().NumpadSide;
-        _layout = RgbEffects.Layout(lamps, device.Map, _numpadSide);
-        _lampOfKey = _layout.Where(p => p.KeyId > 0).GroupBy(p => p.KeyId).ToDictionary(g => g.Key, g => g.First().LampId);
-        _device = device;
-        Log.Write($"RGB engine: {lamps.Count} lamps, {_lampOfKey.Count} keys");
-        return true;
-    }
-
-    /// <summary>
-    /// Sends only lamps whose colour changed; runs of ≥ 3 consecutive lamp ids with one colour go as a single range
-    /// report (a whole-keyboard colour is one report, ~5 ms).
-    /// </summary>
-    void Send(Dictionary<int, LampColor> frame)
-    {
-        var changed = frame.Where(kv => !_sent.TryGetValue(kv.Key, out var old) || old != kv.Value).OrderBy(kv => kv.Key).ToList();
-        if (changed.Count == 0) { Thread.Sleep(33); return; }
-
-        var ranges = new List<(int, int, LampColor)>();
-        var single = new Dictionary<int, LampColor>();
-        for (int i = 0; i < changed.Count;)
-        {
-            int j = i;
-            while (j + 1 < changed.Count && changed[j + 1].Key == changed[j].Key + 1 && changed[j + 1].Value == changed[i].Value) j++;
-            if (j - i >= 2) ranges.Add((changed[i].Key, changed[j].Key, changed[i].Value));
-            else for (int k = i; k <= j; k++) single[changed[k].Key] = changed[k].Value;
-            i = j + 1;
-        }
-        _device!.SetFrame(single, ranges);
-        foreach (var (id, c) in changed) _sent[id] = c;
     }
 
     static LampColor Scale(LampColor c, double k) => new((byte)(c.R * k), (byte)(c.G * k), (byte)(c.B * k));
@@ -304,30 +293,13 @@ public sealed class RgbEngine : IDisposable
 
     [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LastInputInfo info);
 
-    void HandBack(string status)
-    {
-        Status = status;
-        CloseDevice(handBack: true);
-    }
-
-    void CloseDevice(bool handBack)
-    {
-        if (_device is null) return;
-        try { if (handBack && _hostControl) _device.SetAutonomousMode(true); }
-        catch (Exception e) when (e is IOException or TimeoutException or ObjectDisposedException) { }
-        _device.Dispose();
-        _device = null;
-        _hostControl = false;
-        _sent.Clear();
-        Fps = 0;
-    }
-
     public void Dispose()
     {
         _stop = true;
         Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
+        HidSharp.DeviceList.Local.Changed -= OnDevicesChanged;
         if (_thread.IsAlive) _thread.Join(TimeSpan.FromSeconds(3));
-        CloseDevice(handBack: true);
+        if (!_thread.IsAlive) CloseAll(handBack: true); // else the engine thread still owns the devices and hands them back itself
         _audio.Dispose();
     }
 }

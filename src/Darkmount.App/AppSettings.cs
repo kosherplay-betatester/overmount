@@ -83,6 +83,18 @@ public sealed class AppSettings
     /// <summary>Which side the numpad is attached to (for the lighting picture and effect geometry).</summary>
     public Darkmount.Keyboard.NumpadSide NumpadSide { get; set; } = Darkmount.Keyboard.NumpadSide.Right;
 
+    /// <summary>Lighting devices (ids from the Lighting page) the user switched off; OverMount leaves their lighting alone.</summary>
+    public List<string> LightingDevicesOff { get; set; } = [];
+
+    /// <summary>Also light keyboards and laptops through OpenRGB (its SDK server) when it runs.</summary>
+    public bool OpenRgbEnabled { get; set; } = true;
+
+    /// <summary>A be quiet! keyboard has been used on this PC (its features stay visible while it's briefly unplugged).</summary>
+    public bool BeQuietSeen { get; set; }
+
+    /// <summary>The one-time offer to set up OpenRGB (for a laptop or keyboard that needs it) was shown.</summary>
+    public bool OpenRgbOffered { get; set; }
+
     /// <summary>Flash the keyboard red while a dock alert is active.</summary>
     public bool RgbAlertFlash { get; set; } = true;
     public SensorOptions Sensors { get; set; } = new();
@@ -155,6 +167,7 @@ public static class SettingsStore
         settings.CustomScenes = [.. (settings.CustomScenes ?? []).Where(s => s is not null).Take(Darkmount.Keyboard.Lamps.SceneFiles.MaxScenes)
             .Select(Darkmount.Keyboard.Lamps.SceneFiles.Sanitize)];
         settings.FavoriteScenes = [.. (settings.FavoriteScenes ?? []).Where(n => !string.IsNullOrEmpty(n)).Distinct()];
+        settings.LightingDevicesOff = [.. (settings.LightingDevicesOff ?? []).Where(n => !string.IsNullOrEmpty(n)).Distinct()];
     }
 
     public static void Save(string path, AppSettings settings)

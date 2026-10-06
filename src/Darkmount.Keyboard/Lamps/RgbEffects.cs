@@ -110,6 +110,25 @@ public static class RgbEffects
     }
 
     /// <summary>
+    /// Normalised lamp positions for any LampArray device, straight from the positions it reports (no be quiet!
+    /// geometry). Lamps the map identifies as keys get their Dark Mount key id (from the HID usage), so typing effects
+    /// and overlays find them; a device with no key bindings counts its lamps as keys when it is a keyboard.
+    /// </summary>
+    public static IReadOnlyList<LampPoint> LayoutFromPositions(IReadOnlyList<LampInfo> lamps, LampMap map, bool keyboard)
+    {
+        if (lamps.Count == 0) return [];
+        int minX = lamps.Min(l => l.PositionX), maxX = lamps.Max(l => l.PositionX);
+        int minY = lamps.Min(l => l.PositionY), maxY = lamps.Max(l => l.PositionY);
+        double X(int x) => maxX > minX ? (x - minX) / (double)(maxX - minX) : 0.5;
+        double Y(int y) => maxY > minY ? (y - minY) / (double)(maxY - minY) : 0.5;
+        bool anyKeys = map.Keys.Count > 0;
+        return lamps.Select(l => map.Keys.TryGetValue(l.Id, out var key)
+                ? new LampPoint(l.Id, X(l.PositionX), Y(l.PositionY), true, key.KeyId)
+                : new LampPoint(l.Id, X(l.PositionX), Y(l.PositionY), IsKey: keyboard && !anyKeys))
+            .ToList();
+    }
+
+    /// <summary>
     /// Normalised lamp positions: keys from the keyboard geometry (accurate) with their Dark Mount key id, other lamps
     /// (edge lights) from the positions the firmware reports. The ISO-only key (105) gets its ISO position.
     /// </summary>

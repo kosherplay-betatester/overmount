@@ -58,7 +58,7 @@ public sealed class SettingsForm : Form
         KeyboardService? keyboard = null, Darkmount.Dock.DockConnection? dock = null, Macros.MacroManager? macros = null,
         ProfileManager? profiles = null, Func<string?>? currentGame = null,
         Func<Pages.HomeStatus>? home = null, Action<ScreenMode>? setMode = null, Action? togglePause = null,
-        Func<AppSettings>? liveSettings = null, RgbEngine? rgb = null, Pages.UpdateActions? updates = null)
+        Func<AppSettings>? liveSettings = null, RgbEngine? rgb = null, Pages.UpdateActions? updates = null, bool beQuietKeyboard = true)
     {
         _apply = apply;
         _status2 = status;
@@ -90,17 +90,19 @@ public sealed class SettingsForm : Form
         footer.Controls.Add(Ui.Button("Save", (_, _) => Save(), primary: true));
         footer.Controls.Add(_status);
 
-        // Light Mount keyboards have no media dock or display keys: their pages (and the dock preview) are hidden.
-        bool hasDock = dock?.Model.HasMediaDock ?? true;
+        // Light Mount keyboards have no media dock or display keys: their pages (and the dock preview) are hidden. Without
+        // a be quiet! keyboard (another maker's keyboard or a laptop) the keyboard-only pages are hidden too.
+        bool hasDock = beQuietKeyboard && (dock?.Model.HasMediaDock ?? true);
         if (home is not null)
-            AddPage("Home", new Pages.HomePage(home, setMode ?? (_ => { }), SelectPage, togglePause ?? (() => { }), hasDock));
+            AddPage("Home", new Pages.HomePage(home, setMode ?? (_ => { }), SelectPage, togglePause ?? (() => { }), hasDock, beQuietKeyboard));
         if (keyboard is not null)
         {
             AddPage("Lighting", new Pages.LightingHubPage(liveSettings ?? (() => _edit), apply, keyboard, rgb,
-                rgb is null ? null : () => rgb.Fps > 0 ? $"{rgb.Status}, {rgb.Fps:F0} fps" : rgb.Status));
-            AddPage("Keys", new Pages.KeysPage(keyboard));
-            if (macros is not null) AddPage("Macros", new Pages.MacrosPage(macros, keyboard));
-            if (profiles is not null) AddPage("Profiles", new Pages.ProfilesPage(profiles, currentGame ?? (() => null), macros));
+                rgb is null ? null : () => rgb.Fps > 0 ? $"{rgb.Status}, {rgb.Fps:F0} fps" : rgb.Status, beQuietKeyboard));
+            if (beQuietKeyboard) AddPage("Keys", new Pages.KeysPage(keyboard));
+            if (macros is not null) AddPage("Macros", new Pages.MacrosPage(macros, keyboard, beQuietKeyboard));
+            // Profiles save and restore the be quiet! keyboard's own settings (bindings, built-in lighting, display keys).
+            if (profiles is not null && beQuietKeyboard) AddPage("Profiles", new Pages.ProfilesPage(profiles, currentGame ?? (() => null), macros));
         }
         if (hasDock)
         {

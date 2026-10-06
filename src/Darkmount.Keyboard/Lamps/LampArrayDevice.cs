@@ -57,6 +57,25 @@ public sealed class LampArrayDevice : IDisposable
         }
     }
 
+    /// <summary>
+    /// Opens another maker's LampArray collection (found by <see cref="HidSharpLampArrayTransport.FindOthers"/>): key
+    /// bindings are read as standard HID keyboard usages. Null when it can't be opened.
+    /// </summary>
+    public static LampArrayDevice? Open(HidSharp.HidDevice device, byte[] descriptor)
+    {
+        var transport = HidSharpLampArrayTransport.TryOpen(device, descriptor);
+        if (transport is null) return null;
+        try
+        {
+            return new LampArrayDevice(transport, descriptor, LampBindingKind.Auto, transport.DevicePath);
+        }
+        catch
+        {
+            transport.Dispose();
+            throw;
+        }
+    }
+
     public LampArrayLayout Layout { get; }
 
     /// <summary>Set when the descriptor could not be parsed and the Microsoft reference layout is used instead.</summary>

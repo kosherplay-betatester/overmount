@@ -414,6 +414,33 @@ public class LampArrayTests
     }
 
     [Fact]
+    public void Output_takes_control_sends_only_changes_and_hands_back()
+    {
+        var t = new FakeLampTransport(4);
+        var device = new LampArrayDevice(t, RealDescriptor()) { PaceUpdates = false };
+        var layout = Enumerable.Range(0, 4).Select(i => new LampPoint(i, i / 3.0, 0.5, true, i + 1)).ToList();
+        var output = new Darkmount.App.LightDevices.LampArrayOutput(device, "std:1234:5678", "Test", Darkmount.App.LightDevices.LightVia.WindowsStandard, layout);
+        var frame = new Dictionary<int, LampColor> { [0] = new(9, 9, 9), [1] = new(9, 9, 9), [2] = new(9, 9, 9), [3] = new(1, 2, 3) };
+        int before = t.Written.Count;
+
+        output.Send(frame);
+        Assert.Equal([6, 5, 4], t.Written.Skip(before).Select(w => (int)w[0])); // host control, one range (0..2), lamp 3
+        Assert.Equal(0, t.Written[before][1]);
+
+        output.Send(frame);                                                     // unchanged: nothing written
+        Assert.Equal(before + 3, t.Written.Count);
+
+        output.Send(new Dictionary<int, LampColor>(frame) { [3] = new(7, 7, 7) });
+        Assert.Equal(4, t.Written[^1][0]);
+        Assert.Equal(before + 4, t.Written.Count);
+
+        output.Dispose();
+        Assert.Equal((6, 1), (t.Written[^1][0], t.Written[^1][1]));              // autonomous mode again
+        Assert.True(t.Disposed);
+        Assert.Equal(new Dictionary<int, int> { [1] = 0, [2] = 1, [3] = 2, [4] = 3 }, output.LampOfKey);
+    }
+
+    [Fact]
     public void Device_PacesCompleteUpdatesByMinUpdateInterval()
     {
         var t = new FakeLampTransport(3);

@@ -1,8 +1,8 @@
 namespace Darkmount.App.Macros;
 
 /// <summary>
-/// Owns the macro list, the hotkey triggers (F13–F24 combos) and the player. Create on the UI thread (hotkeys
-/// need a window handle). Keys on the keyboard are bound to the triggers from the Macros or Keys page.
+/// Owns the macro list, the hotkey triggers (F13–F24, or any key with Ctrl/Alt/Shift/Win) and the player. Create on
+/// the UI thread (hotkeys need a window handle). Dark Mount keys are bound to F13–F24 triggers from the Macros or Keys page.
 /// </summary>
 public sealed class MacroManager : IDisposable
 {
@@ -49,9 +49,12 @@ public sealed class MacroManager : IDisposable
     public void StopAll() => _player.StopAll();
 
     /// <summary>The first F13–F24 trigger (without modifiers) no macro uses yet.</summary>
-    public MacroTrigger FreeTrigger() =>
-        Enum.GetValues<TriggerKey>().Select(k => new MacroTrigger(k))
-            .FirstOrDefault(t => Macros.All(m => m.Trigger != t)) ?? new MacroTrigger(TriggerKey.F24, Ctrl: true);
+    public MacroTrigger FreeTrigger() => FreeTrigger(Macros);
+
+    /// <inheritdoc cref="FreeTrigger()"/>
+    public static MacroTrigger FreeTrigger(IReadOnlyCollection<Macro> macros) =>
+        MacroTrigger.AllKeys.Where(MacroTrigger.IsF13ToF24).Select(k => new MacroTrigger(k))
+            .FirstOrDefault(t => macros.All(m => m.Trigger != t)) ?? new MacroTrigger(TriggerKey.F24, Ctrl: true);
 
     public void Dispose()
     {

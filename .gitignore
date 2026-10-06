@@ -7,3 +7,4 @@ tests/Darkmount.Tests/snapshots/
 publish/
 .playwright-mcp/
 *.stackdump
+.claude/worktrees/

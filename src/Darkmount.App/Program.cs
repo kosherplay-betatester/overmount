@@ -14,6 +14,7 @@ static class Program
         if (Has("--setup-cpu-sensor")) return Setup.CpuSensorSetup.RunElevatedSetup();
         if (Has("--remove-cpu-sensor")) return Setup.CpuSensorSetup.RunElevatedRemove();
         if (Has("--afterburner-autostart") && args.Length >= 2) return Setup.Companions.RunElevatedAfterburnerAutostart(args[^1]);
+        if (Has("--setup-openrgb") && args.Length >= 2) return Setup.OpenRgbSetup.RunElevatedSetup(args[^1]);
         Run(args, Has);
         return 0;
     }

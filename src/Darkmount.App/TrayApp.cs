@@ -49,6 +49,7 @@ public sealed class TrayApp : ApplicationContext
     readonly System.Windows.Forms.Timer _companionsTimer = new();
     readonly System.Windows.Forms.Timer _ioCenterTimer = new();
     readonly System.Windows.Forms.Timer _sensorUpdateTimer = new();
+    readonly System.Windows.Forms.Timer _openRgbTimer = new();
     bool _ioPromptOpen, _updatingSensor;
     Version? _sensorVersion;
     DateTime _sensorVersionCheckedAt;
@@ -60,6 +61,13 @@ public sealed class TrayApp : ApplicationContext
     {
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         _settings = SettingsStore.Load(SettingsStore.DefaultPath);
+        if (!_settings.BeQuietSeen && File.Exists(DockConfigGuard.DefaultPath))
+        {
+            // Upgrading from a version before 1.6: the dock backup shows a be quiet! keyboard was used here, so its
+            // features stay visible even before (or while) it connects.
+            _settings.BeQuietSeen = true;
+            SaveSettings();
+        }
 
         _dock = new DockConnection(OpenKeyboard, new DockConfigGuard(DockConfigGuard.DefaultPath), IoCenterDetector.IsRunning);
         _dock.Log += Log.Write;
@@ -129,6 +137,18 @@ public sealed class TrayApp : ApplicationContext
             };
             _sensorUpdateTimer.Start();
         }
+        if (!_settings.OpenRgbOffered)
+        {
+            // Once: a laptop or keyboard OpenRGB can light, and nothing lights it yet. Give the engine time to look first.
+            _openRgbTimer.Interval = Environment.TickCount64 < 5 * 60 * 1000 ? 75_000 : 15_000;
+            _openRgbTimer.Tick += async (_, _) =>
+            {
+                if (_ioPromptOpen) return; // one question at a time; try again on the next tick
+                _openRgbTimer.Stop();
+                await OfferOpenRgbOnce();
+            };
+            _openRgbTimer.Start();
+        }
         if (!_settings.IoCenterDontAsk)
         {
             // Right after logon give IO Center's own autostart time to launch it, so one question covers both.
@@ -190,6 +210,7 @@ public sealed class TrayApp : ApplicationContext
             else Balloon("OverMount", release is null ? "Couldn't reach GitHub to check for updates."
                 : $"You have the latest version ({Setup.Installer.CurrentVersion.ToString(3)}).");
         };
+        _animationsMenu = animations;
         _menu.Items.AddRange([
             _status, _takeControl, new ToolStripSeparator(),
             _auto, _stats, _anim, _moreScreens, _dockDefault, animations, new ToolStripSeparator(),
@@ -204,6 +225,23 @@ public sealed class TrayApp : ApplicationContext
         return _menu;
     }
 
+    ToolStripMenuItem? _animationsMenu;
+
+    /// <summary>
+    /// be quiet! keyboard features (dock screen, display keys, key remapping, the keyboard's built-in effect, IO Center)
+    /// apply: a be quiet! keyboard is connected, or one has been used on this PC and no other RGB keyboard is lit right now
+    /// (so unplugging it for a moment hides nothing). On other keyboards and laptops those parts of the app are hidden.
+    /// </summary>
+    bool BeQuietFeatures
+    {
+        get
+        {
+            if (_dock.State != DockState.Disconnected) return true; // connected, paused, busy: the keyboard is there
+            bool others = _rgb.Devices.Any(d => d.Active && d.Via != LightDevices.LightVia.BeQuiet);
+            return _settings.BeQuietSeen && !others;
+        }
+    }
+
     void UpdateMenuChecks()
     {
         _auto.Checked = _settings.Mode == ScreenMode.Auto;
@@ -212,9 +250,10 @@ public sealed class TrayApp : ApplicationContext
         _dockDefault.Checked = _settings.Mode == ScreenMode.DockDefault;
         foreach (ToolStripMenuItem item in _moreScreens.DropDownItems) item.Checked = item.Tag is ScreenMode m && m == _settings.Mode;
         _moreScreens.Checked = _settings.Mode is ScreenMode.NowPlaying or ScreenMode.Clock or ScreenMode.Network or ScreenMode.FocusTimer;
-        bool hasDock = _dock.Model.HasMediaDock;
-        foreach (var item in new ToolStripItem[] { _auto, _stats, _anim, _moreScreens, _dockDefault, _pause })
-            item.Visible = hasDock;
+        bool hasDock = _dock.Model.HasMediaDock && BeQuietFeatures;
+        foreach (var item in new ToolStripItem?[] { _auto, _stats, _anim, _moreScreens, _dockDefault, _pause, _animationsMenu })
+            if (item is not null) item.Visible = hasDock;
+        if (_dock.Paused) _pause.Visible = true; // always a way to resume
         _focusToggle.Text = _pomodoro.IsRunning ? "Pause" : _pomodoro.IsPaused ? "Resume" : "Start focus";
         _takeControl.Visible = _dock.State == DockState.PausedForIoCenter;
         _pause.Checked = _dock.Paused;
@@ -310,7 +349,8 @@ public sealed class TrayApp : ApplicationContext
         _settingsForm = new SettingsForm(_settings, ApplySettings, StatusReport, _keyboard, _dock, _macros,
             _profiles, () => _pipeline.LastSnapshot?.GameName, HomeStatus, SetMode,
             () => { _dock.Paused = !_dock.Paused; _dock.Tick(); }, liveSettings: () => _settings, rgb: _rgb,
-            updates: new Pages.UpdateActions(CheckForUpdates, r => OfferUpdate(r, userAsked: true), () => _latestRelease));
+            updates: new Pages.UpdateActions(CheckForUpdates, r => OfferUpdate(r, userAsked: true), () => _latestRelease),
+            beQuietKeyboard: BeQuietFeatures);
         _settingsForm.WindowState = FormWindowState.Maximized; // the pages (keyboard pictures, gallery) use the room
         _settingsForm.Show();
     }
@@ -338,10 +378,18 @@ public sealed class TrayApp : ApplicationContext
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException) { }
         }
         bool ioCenter = IoCenterDetector.IsRunning(), ioCenterAutostart = IoCenter.IoCenterAutostart.CurrentUser.IsEnabled();
+        // Other makers' keyboards OverMount lights (Windows standard, OpenRGB): no be quiet! keyboard isn't a problem then.
+        var others = _rgb.Devices.Where(d => d.Active && d.Via != LightDevices.LightVia.BeQuiet).Select(d => d.Name).ToList();
+        bool beQuiet = BeQuietFeatures;
         var checks = new List<Pages.SetupCheck>
         {
-            new("Keyboard connected", connected, false,
-                connected ? $"{model.Name} is connected." : _dock.LastError ?? "Plug in the keyboard's USB cable."),
+            !connected && (others.Count > 0 || !beQuiet)
+                ? new("RGB keyboard", others.Count > 0, false,
+                    others.Count > 0 ? $"OverMount lights {string.Join(", ", others)}."
+                        : "No RGB keyboard found yet. On the Lighting page, Set up OpenRGB lights laptops and keyboards without Windows Dynamic Lighting.",
+                    others.Count > 0 ? null : "Open Lighting", others.Count > 0 ? null : () => _settingsForm?.SelectPage("Lighting"))
+                : new("Keyboard connected", connected, false,
+                    connected ? $"{model.Name} is connected." : _dock.LastError ?? "Plug in the keyboard's USB cable."),
             new("IO Center is closed", !ioCenter, false,
                 ioCenter ? "IO Center is running, so OverMount has paused. Right-click its tray icon → Exit." : "OverMount controls the keyboard.",
                 "Close IO Center", () => TakeControlFromIoCenter(ask: true)),
@@ -372,10 +420,18 @@ public sealed class TrayApp : ApplicationContext
                 _dock.DockUnresponsive ? "Press any dock button once — the dock only accepts pictures while its screen is on." : "The dock is receiving pictures."));
         checks.Add(new("Starts with Windows", Autostart.IsEnabled(), true, "So your lighting, macros and dashboard are always on.",
             "Turn on", () => { _settings.StartWithWindows = true; TrySetAutostart(true); SaveSettings(); }));
+        if (!beQuiet)
+        {
+            // Another maker's keyboard: no dock, IO Center or be quiet! lighting checks. CPU temperature only feeds the
+            // temperature lighting effects there, so it's optional.
+            checks = [.. checks
+                .Where(c => c.Title is "RGB keyboard" or "Keyboard connected" or "CPU temperature" or "CPU sensor is up to date" or "Starts with Windows")
+                .Select(c => c.Title == "CPU temperature" ? c with { Optional = true } : c)];
+        }
 
         int macros = _macros.Macros.Count(m => m.Enabled);
         return new(
-            connected ? model.Name : "Not connected",
+            connected ? model.Name : others.Count switch { 0 => "Not connected", 1 => others[0], _ => $"{others[0]} +{others.Count - 1}" },
             dock,
             _settings.RgbEnabled ? _rgb.Status : "Keyboard's own effect",
             _profiles.ActiveProfile ?? "No profile applied",
@@ -488,11 +544,30 @@ public sealed class TrayApp : ApplicationContext
         bool running = IoCenterDetector.IsRunning(), autostart = IoCenter.IoCenterAutostart.CurrentUser.IsEnabled();
         if (!running && !autostart) return;
 
+        var (page, recommended, closeOnly) = IoCenterPage(running, autostart);
+        TaskDialogButton result;
+        _ioPromptOpen = true;
+        try { result = TaskDialog.ShowDialog(page, TaskDialogStartupLocation.CenterScreen); }
+        finally { _ioPromptOpen = false; }
+        if (page.Verification!.Checked)
+        {
+            _settings.IoCenterDontAsk = true;
+            SaveSettings();
+        }
+        if (result == recommended && autostart) DisableIoCenterAutostart();
+        if ((result == recommended || result == closeOnly) && running) TakeControlFromIoCenter(ask: false);
+        Log.Write($"IO Center prompt: running={running}, autostart={autostart}, choice={result.Text}");
+    }
+
+    /// <summary>The IO Center question. Pure, for tests (Windows refuses pages that mix command links with buttons).</summary>
+    internal static (TaskDialogPage Page, TaskDialogButton Recommended, TaskDialogButton CloseOnly) IoCenterPage(bool running, bool autostart)
+    {
         var recommended = new TaskDialogCommandLinkButton(
             running && autostart ? "Close IO Center and turn off its autostart" : running ? "Close IO Center" : "Turn off IO Center's autostart",
             "Recommended. OverMount does everything IO Center does for this keyboard.");
         var closeOnly = new TaskDialogCommandLinkButton("Only close it for now", "IO Center will start again with Windows.");
-        var notNow = new TaskDialogButton("Not now");
+        // All command links: Windows refuses a page that mixes them with ordinary buttons.
+        var notNow = new TaskDialogCommandLinkButton("Not now", "Ask again the next time OverMount starts.");
         var page = new TaskDialogPage
         {
             Caption = "OverMount",
@@ -507,19 +582,7 @@ public sealed class TrayApp : ApplicationContext
         page.Buttons.Add(recommended);
         if (running && autostart) page.Buttons.Add(closeOnly);
         page.Buttons.Add(notNow);
-
-        TaskDialogButton result;
-        _ioPromptOpen = true;
-        try { result = TaskDialog.ShowDialog(page, TaskDialogStartupLocation.CenterScreen); }
-        finally { _ioPromptOpen = false; }
-        if (page.Verification.Checked)
-        {
-            _settings.IoCenterDontAsk = true;
-            SaveSettings();
-        }
-        if (result == recommended && autostart) DisableIoCenterAutostart();
-        if ((result == recommended || result == closeOnly) && running) TakeControlFromIoCenter(ask: false);
-        Log.Write($"IO Center prompt: running={running}, autostart={autostart}, choice={result.Text}");
+        return (page, recommended, closeOnly);
     }
 
     void DisableIoCenterAutostart()
@@ -624,6 +687,60 @@ public sealed class TrayApp : ApplicationContext
         if (needed && !_exiting) ShowCompanions();
     }
 
+    /// <summary>
+    /// Once: if this PC has a keyboard or gaming laptop OpenRGB can light (and no Windows-standard keyboard is lit), offer
+    /// to install OpenRGB and start it with Windows. Nothing is installed without the user's yes and Windows' own prompt.
+    /// </summary>
+    async Task OfferOpenRgbOnce()
+    {
+        if (_exiting || _ioPromptOpen || _settings.OpenRgbOffered) return;
+        _ioPromptOpen = true;
+        TaskDialogButton? result = null;
+        TaskDialogButton? install = null;
+        try
+        {
+            bool standardLit = _rgb.Devices.Any(d => d.Active && d.Via != LightDevices.LightVia.BeQuiet);
+            var (hardware, reachable, installed) = await Task.Run(() =>
+                (Setup.OpenRgbSetup.FindHardware(), Setup.OpenRgbSetup.ServerReachable(), Setup.OpenRgbSetup.Installed));
+            _settings.OpenRgbOffered = true;
+            SaveSettings();
+            if (hardware is null || standardLit || reachable || _exiting) return;
+            Log.Write($"OpenRGB offer for {hardware} (installed: {installed})");
+            (var page, install) = OpenRgbPage(hardware, installed);
+            result = TaskDialog.ShowDialog(page, TaskDialogStartupLocation.CenterScreen);
+        }
+        finally { _ioPromptOpen = false; }
+        if (install is null || result != install) return;
+        var outcome = await Task.Run(Setup.OpenRgbSetup.SetUpAsync);
+        Log.Write($"OpenRGB setup: {outcome}");
+        Balloon("OverMount", outcome switch
+        {
+            Setup.OpenRgbSetup.Result.Running => "OpenRGB is running: your keyboard shows up on the Lighting page.",
+            Setup.OpenRgbSetup.Result.Declined => "OpenRGB not set up (permission declined). You can do it later on the Lighting page.",
+            _ => "OpenRGB could not be set up. Try again on the Lighting page.",
+        }, outcome == Setup.OpenRgbSetup.Result.Running ? ToolTipIcon.Info : ToolTipIcon.Warning);
+    }
+
+    /// <summary>The OpenRGB offer. Pure, for tests.</summary>
+    internal static (TaskDialogPage Page, TaskDialogButton Install) OpenRgbPage(string hardware, bool installed)
+    {
+        var install = new TaskDialogButton("Set up OpenRGB");
+        var page = new TaskDialogPage
+        {
+            Caption = "OverMount",
+            Heading = $"Light up your {hardware} with OverMount",
+            Text = (installed ? "OpenRGB is installed but not running. " : "") +
+                   "OverMount's lighting studio (scenes, typing and music effects, overlays) can drive this keyboard through " +
+                   "OpenRGB, a free, open-source lighting app. OverMount will " + (installed ? "" : "install it and ") +
+                   "start it with Windows.\n\nWindows will ask for permission once. You can also do this later on the Lighting page.",
+            Icon = TaskDialogIcon.Information,
+            AllowCancel = true,
+        };
+        page.Buttons.Add(install);
+        page.Buttons.Add(new TaskDialogButton("Not now"));
+        return (page, install);
+    }
+
     /// <summary>The CPU sensor copy's version when it is older than the app (checked at most every 30 s); else null.</summary>
     Version? SensorOutdated()
     {
@@ -655,7 +772,7 @@ public sealed class TrayApp : ApplicationContext
         if (result == update) await UpdateSensor();
     }
 
-    static TaskDialogPage SensorUpdatePage(Version app, Version helper, TaskDialogButton update)
+    internal static TaskDialogPage SensorUpdatePage(Version app, Version helper, TaskDialogButton update)
     {
         var page = new TaskDialogPage
         {
@@ -755,6 +872,11 @@ public sealed class TrayApp : ApplicationContext
     {
         Log.Write($"Dock state: {state}");
         if (_exiting) return; // the tray icon is already gone
+        if (!_settings.BeQuietSeen && state != DockState.Disconnected)
+        {
+            _settings.BeQuietSeen = true;
+            SaveSettings();
+        }
         UpdateStatus();
         if (state == DockState.PausedForIoCenter && !_toldAboutIoCenter && !_ioPromptOpen)
         {
@@ -831,6 +953,7 @@ public sealed class TrayApp : ApplicationContext
         _companionsTimer.Stop();
         _ioCenterTimer.Stop();
         _sensorUpdateTimer.Stop();
+        _openRgbTimer.Stop();
         _tickTimer.Dispose();
         _pipeline.Dispose();
         _rgb.Dispose();

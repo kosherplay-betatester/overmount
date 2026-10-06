@@ -14,6 +14,8 @@
 
 **OverMount** takes over your **be quiet! Dark Mount** (and Light Mount) keyboard and makes it do far more than the stock software. You get a live hardware dashboard on the media dock with **FPS and 1% lows** in games. You get IO Center-style **per-key RGB** with layers, paint mode, 123 premade scenes and your own saved presets, plus lighting that reacts to your typing, your music, your screen and your mouse. And you get macros, key remapping, per-game profiles, a focus timer, and one-click import of your IO Center profiles.
 
+**Not on a be quiet! keyboard?** OverMount's lighting studio and macros also work on other RGB keyboards and gaming laptops: anything with **Windows Dynamic Lighting**, plus hundreds more (ASUS TUF/ROG, MSI, Razer, Corsair…) through the free **OpenRGB**, which OverMount can set up for you.
+
 It's one small tray app that installs in seconds with no admin rights, and it updates itself.
 
 ---
@@ -29,9 +31,20 @@ It's one small tray app that installs in seconds with no admin rights, and it up
 | 🖥️ **Six dock screens** | Stats, Now playing (Spotify, browsers…), Clock & calendar, Network, Focus timer, and your own GIF, video or pictures. Rotate them automatically or let smart screens pick. |
 | ⌨️ **Total key control** | Remap keys on both layers, set Game Mode locks, use the 8 display keys (with pictures), and record macros that launch apps and type text. |
 | 🔁 **Profiles** | Save complete setups, switch automatically per game, and **import IO Center profiles** (lighting, keys, display-key pictures). |
+| 💻 **Any RGB keyboard** | Lights other makers' keyboards and gaming laptops too: Windows Dynamic Lighting devices directly, and ASUS TUF/ROG, MSI, Razer, Corsair and more through OpenRGB. Macros run on any keyboard. |
 | 🛡️ **Safe by design** | Backs up your original keyboard and dock settings, hands everything back when you exit, and never sends firmware-update, reset or calibration commands. |
 
 ---
+
+## Other keyboards and laptops
+
+OverMount lights every RGB keyboard it finds with the same scenes, effects and overlays, at the same time:
+
+- **be quiet! Dark Mount / Light Mount**: everything, including the dock screen, display keys and key remapping.
+- **Keyboards and laptops with Windows Dynamic Lighting** (most RGB keyboards since 2023, many recent ASUS ROG/TUF laptops): lit directly. Turn off *Use Dynamic Lighting on my devices* for that device in Windows Settings so OverMount can drive it.
+- **Hundreds more through [OpenRGB](https://openrgb.org/)** (free, open source; older ASUS TUF/ROG laptops, MSI, Razer, Corsair, SteelSeries…). When OverMount finds a gaming laptop or an RGB keyboard that needs it, it offers once to install OpenRGB and start it with Windows (one permission prompt); you can also do it on the Lighting page. OverMount uses OpenRGB's local SDK server, switches the device to direct mode while it draws, and puts OpenRGB's own effect back when it stops.
+
+The **Lighting** page lists your devices under *Your RGB devices*; untick one to leave its lighting alone. Without a be quiet! keyboard, OverMount shows only what applies (lighting, macros, alerts, sensors); the dock, display-key, key-remapping and profile pages stay hidden. **Macros** work on any keyboard: give a macro a key combination such as Ctrl+Shift+K or Win+F5, or F13–F24. Combinations that would take over normal typing (Shift+letter, Ctrl+Alt+letter, which is AltGr) are refused.
 
 ## The Lighting studio
 
@@ -133,7 +146,7 @@ Click a key and choose what it does on the **Base** or **Fn** layer: another key
 
 <img src="docs/images/app-macros.png" width="85%">
 
-Record keys and mouse clicks, or build steps: keys, text, delays, mouse, scroll, media keys, launch a program, open a folder or website. Play once, repeat, or toggle a loop. **Bind key** makes any keyboard key trigger the macro (it sends F13–F24, which OverMount catches).
+Record keys and mouse clicks, or build steps: keys, text, delays, mouse, scroll, media keys, launch a program, open a folder or website. Play once, repeat, or toggle a loop. A macro's trigger is a key combination that works on **any keyboard** (for example Ctrl+Shift+K, Win+F5, Ctrl+Num 1), or F13–F24. Combinations that would take over normal typing are refused. On a be quiet! keyboard, **Bind key** makes any key send F13–F24 so it triggers the macro.
 </details>
 
 <details>
@@ -197,6 +210,7 @@ OverMount checks GitHub for a new release once a day (you can turn this off). **
 
 - **Everything stays on your PC.** Audio-reactive effects analyse what your speakers play (never the microphone), and screen effects sample a 24×8 grid of screen colours. The key-press hook records only *which* key lit up and when, never text. The mouse position and clicks are read only while a mouse effect is on. None of it is stored or sent.
 - **OverMount CPU sensor** (optional, set up from *Set up sensor apps…*): installs the open-source, signed [PawnIO](https://pawnio.eu/) driver and runs a copy of OverMount from `C:\Program Files\OverMount` as SYSTEM, reading only the CPU's temperature and power (via LibreHardwareMonitor). It only works while OverMount runs, and uninstalling OverMount removes it. App updates can't replace that copy (it needs admin rights), so after an update OverMount offers to update the sensor too, with one permission prompt.
+- **OpenRGB** (optional, for keyboards without Windows Dynamic Lighting): installed with winget only after you say yes, started with Windows from a logon task with highest rights (it needs them for laptop lighting). OverMount talks to it over its local SDK server (127.0.0.1:6742) and only touches keyboards, keypads and laptops; your other OpenRGB devices are left alone.
 - The only network request is the optional update check to GitHub.
 - **Allowlisted commands only**: the code has no way to send firmware-update, factory-reset, serial-number, raw-storage, calibration or polling-rate commands, and it never talks to a keyboard in bootloader mode.
 - **Backups**: your original dock settings and complete keyboard setup (lighting, bindings, locks, display-key pictures) are saved before the first change. Exiting OverMount restores the dock and hands lighting back to the keyboard.
@@ -230,7 +244,7 @@ The published `OverMount.exe` is also its own installer: run it from anywhere an
 
 OverMount is free and open source under the [MIT License](LICENSE): use it, change it and share it. Pull requests and bug reports are welcome.
 
-Built with [SkiaSharp](https://github.com/mono/SkiaSharp) (MIT), [NAudio](https://github.com/naudio/NAudio) (MIT), [HidSharp](https://www.zer7.com/software/hidsharp) (Apache 2.0) and [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL 2.0, unmodified); the optional CPU sensor uses the [PawnIO](https://pawnio.eu/) driver.
+Built with [SkiaSharp](https://github.com/mono/SkiaSharp) (MIT), [NAudio](https://github.com/naudio/NAudio) (MIT), [HidSharp](https://www.zer7.com/software/hidsharp) (Apache 2.0) and [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL 2.0, unmodified); the optional CPU sensor uses the [PawnIO](https://pawnio.eu/) driver, and other keyboards can be lit through [OpenRGB](https://openrgb.org/) (GPL 2.0; installed separately, not bundled).
 
 ---
 

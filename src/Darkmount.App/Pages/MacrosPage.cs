@@ -6,18 +6,23 @@ namespace Darkmount.App.Pages;
 
 /// <summary>
 /// Macros that run on the PC: keystrokes, text, delays, mouse, media keys, apps, websites and folders. A macro is
-/// triggered by F13–F24 (optionally with Ctrl/Shift/Alt); any keyboard key can be bound to that trigger here.
+/// triggered by a key combination pressed on any keyboard (e.g. Ctrl+Shift+K), or by F13–F24 (optionally with
+/// Ctrl/Shift/Alt/Win), which a Dark Mount key can be bound to send here.
 /// </summary>
 public sealed class MacrosPage : Ui.Page
 {
     readonly MacroManager _manager;
+    readonly bool _keyBinding;
     readonly KeyboardService _keyboard;
     readonly List<Macro> _macros;
     readonly ListBox _list = new() { Width = 260, Height = 250, Font = Ui.Body, BackColor = Ui.Panel, ForeColor = Ui.Text, BorderStyle = BorderStyle.None };
     readonly ListBox _steps = new() { Width = 420, Height = 250, Font = Ui.Body, BackColor = Ui.Panel, ForeColor = Ui.Text, BorderStyle = BorderStyle.None };
     readonly TextBox _name = new() { Width = 260, Font = Ui.Body };
-    readonly ComboBox _trigger = Ui.Combo<TriggerKey>(110), _mode = Ui.Combo<PlaybackMode>(150);
-    readonly CheckBox _ctrl = Ui.Check("Ctrl"), _shift = Ui.Check("Shift"), _alt = Ui.Check("Alt"), _enabled = Ui.Check("Enabled");
+    readonly ComboBox _trigger = TriggerCombo(), _mode = Ui.Combo<PlaybackMode>(150);
+    readonly CheckBox _ctrl = Ui.Check("Ctrl"), _shift = Ui.Check("Shift"), _alt = Ui.Check("Alt"), _win = Ui.Check("Win"), _enabled = Ui.Check("Enabled");
+    readonly Label _triggerHelp = Ui.Note("", 440);
+    readonly FlowLayoutPanel _bind = new() { AutoSize = true, WrapContents = false };
+    readonly Label _anyKeyboard = Ui.Note("Press this key combination on any keyboard to run the macro.", 720);
     readonly NumericUpDown _repeat = Ui.Number(1, 10000);
     readonly ComboBox _bindKey = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, Font = Ui.Body };
     readonly Button _record;
@@ -26,11 +31,15 @@ public sealed class MacrosPage : Ui.Page
     Macro? _recordingInto;
     bool _loading;
 
-    public MacrosPage(MacroManager manager, KeyboardService keyboard)
-        : base("Macros", "Macros run on your PC while OverMount is running. Each macro has a trigger key (F13–F24, " +
-                         "which normal keyboards don't have); bind any key of your Dark Mount — e.g. a display key — to it below.")
+    /// <param name="keyBinding">False without a be quiet! keyboard: no "bind a Dark Mount key" row.</param>
+    public MacrosPage(MacroManager manager, KeyboardService keyboard, bool keyBinding = true)
+        : base("Macros", "Macros run on your PC while OverMount is running. Each macro has a trigger: a key combination " +
+                         "such as Ctrl+Shift+K that works on any keyboard, or F13–F24 (which normal keyboards don't have) — bind " +
+                         "any key of your Dark Mount, e.g. a display key, to one of those below. Keys other than F13–F24 need " +
+                         "Ctrl, Alt, Shift or Win, so normal typing is never taken over.")
     {
         _manager = manager;
+        _keyBinding = keyBinding;
         _keyboard = keyboard;
         _macros = manager.Macros.Select(m => m.Clone()).ToList();
         _record = Ui.Button("● Record", (_, _) => ToggleRecord());
@@ -39,7 +48,7 @@ public sealed class MacrosPage : Ui.Page
         foreach (var k in KeyIds.All.Where(k => KeyIds.IsRebindable(k.Id, Layer.Common)))
             _bindKey.Items.Add(new KeyItem(k.Id, k.Zone == KeyZone.DisplayKey ? $"Display key B{k.Id - KeyIds.DisplayKey1 + 1}" : k.Zone == KeyZone.DockButton ? $"Dock: {k.Label}" : k.Label));
         _bindKey.SelectedIndex = _bindKey.Items.Cast<KeyItem>().ToList().FindIndex(k => k.Id == KeyIds.DisplayKey1);
-        foreach (var c in new Control[] { _name, _trigger, _mode, _ctrl, _shift, _alt, _enabled, _repeat })
+        foreach (var c in new Control[] { _name, _trigger, _mode, _ctrl, _shift, _alt, _win, _enabled, _repeat })
         {
             if (c is TextBox t) t.TextChanged += (_, _) => Commit();
             else if (c is ComboBox cb) cb.SelectedIndexChanged += (_, _) => Commit();
@@ -54,7 +63,7 @@ public sealed class MacrosPage : Ui.Page
         left.Controls.AddRange([_list, listButtons]);
 
         var trigger = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
-        trigger.Controls.AddRange([_ctrl, _shift, _alt, _trigger]);
+        trigger.Controls.AddRange([_ctrl, _shift, _alt, _win, _trigger]);
         var mode = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
         mode.Controls.AddRange([_mode, Hint("times"), _repeat, _enabled]);
         var stepButtons = new FlowLayoutPanel { AutoSize = true, WrapContents = true, MaximumSize = new Size(440, 0) };
@@ -65,6 +74,7 @@ public sealed class MacrosPage : Ui.Page
         void R(string label, Control c) { right.Controls.Add(new Label { Text = label, AutoSize = true, ForeColor = Ui.Text, Margin = new Padding(0, 9, 10, 0) }); right.Controls.Add(c); }
         R("Name", _name);
         R("Trigger", trigger);
+        R("", _triggerHelp);
         R("Plays", mode);
         R("Steps", _steps);
         R("", stepButtons);
@@ -73,9 +83,10 @@ public sealed class MacrosPage : Ui.Page
         editor.Controls.AddRange([left, right]);
         AddFull(editor);
 
-        var bind = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
-        bind.Controls.AddRange([Hint("Keyboard key that triggers this macro:"), _bindKey, Ui.Button("Bind key", async (_, _) => await BindKey())]);
-        AddFull(bind);
+        // Only F13–F24 triggers can be bound to a Dark Mount key; other combinations show _anyKeyboard instead.
+        _bind.Controls.AddRange([Hint("Dark Mount key that triggers this macro:"), _bindKey, Ui.Button("Bind key", async (_, _) => await BindKey())]);
+        AddFull(_bind);
+        AddFull(_anyKeyboard);
         var save = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
         save.Controls.AddRange([Ui.Button("Save macros", (_, _) => SaveAll(), primary: true), Ui.Button("Stop all running macros", (_, _) => _manager.StopAll())]);
         AddFull(save);
@@ -102,18 +113,36 @@ public sealed class MacrosPage : Ui.Page
     {
         var m = Current;
         _loading = true;
-        foreach (var c in new Control[] { _name, _trigger, _mode, _ctrl, _shift, _alt, _enabled, _repeat, _steps }) c.Enabled = m is not null;
+        foreach (var c in new Control[] { _name, _trigger, _mode, _ctrl, _shift, _alt, _win, _enabled, _repeat, _steps }) c.Enabled = m is not null;
         if (m is not null)
         {
             _name.Text = m.Name;
             _trigger.SelectedItem = m.Trigger.Key;
-            (_ctrl.Checked, _shift.Checked, _alt.Checked) = (m.Trigger.Ctrl, m.Trigger.Shift, m.Trigger.Alt);
+            (_ctrl.Checked, _shift.Checked, _alt.Checked, _win.Checked) = (m.Trigger.Ctrl, m.Trigger.Shift, m.Trigger.Alt, m.Trigger.Win);
             _mode.SelectedItem = m.Mode;
             _repeat.Value = Math.Clamp(m.RepeatCount, 1, 10000);
             _enabled.Checked = m.Enabled;
         }
         _loading = false;
+        ShowTriggerHelp();
         ShowSteps();
+    }
+
+    /// <summary>Explains the current trigger, and offers key binding only for F13–F24 (the keys a Dark Mount can send).</summary>
+    void ShowTriggerHelp()
+    {
+        var t = Current?.Trigger;
+        _triggerHelp.ForeColor = t is { IsValid: false } ? Ui.Accent : Ui.Dim;
+        _triggerHelp.Text = t switch
+        {
+            null => "",
+            { IsValid: false } => t.Problem!,
+            { UsesF13ToF24: true } => "Normal keyboards don't have F13–F24: bind a Dark Mount key to this trigger below.",
+            _ => "Works on any keyboard. While the macro is on, this combination runs it in every app instead of doing " +
+                 "what it normally does, so pick one you don't use.",
+        };
+        _bind.Visible = _keyBinding && (t is null || t.UsesF13ToF24);
+        _anyKeyboard.Visible = !_bind.Visible;
     }
 
     void ShowSteps()
@@ -128,18 +157,19 @@ public sealed class MacrosPage : Ui.Page
     {
         if (_loading || Current is not { } m) return;
         m.Name = _name.Text;
-        m.Trigger = new MacroTrigger((TriggerKey)(_trigger.SelectedItem ?? TriggerKey.F13), _ctrl.Checked, _shift.Checked, _alt.Checked);
+        m.Trigger = new MacroTrigger((TriggerKey)(_trigger.SelectedItem ?? TriggerKey.F13), _ctrl.Checked, _shift.Checked, _alt.Checked, _win.Checked);
         m.Mode = (PlaybackMode)(_mode.SelectedItem ?? PlaybackMode.Once);
         m.RepeatCount = (int)_repeat.Value;
         m.Enabled = _enabled.Checked;
         _repeat.Enabled = m.Mode == PlaybackMode.RepeatCount;
+        ShowTriggerHelp();
         RefreshList();
     }
 
     void NewMacro()
     {
         if (_recorder is not null) return;
-        var used = new MacroManagerView(_macros).FreeTrigger();
+        var used = MacroManager.FreeTrigger(_macros);
         _macros.Add(new Macro { Name = $"Macro {_macros.Count + 1}", Trigger = used });
         RefreshList();
         _list.SelectedIndex = _macros.Count - 1;
@@ -265,10 +295,8 @@ public sealed class MacrosPage : Ui.Page
     async Task BindKey()
     {
         if (Current is not { } m) return;
-        if (_bindKey.SelectedItem is not KeyItem key) return;
-        var mods = (m.Trigger.Ctrl ? KeyModifiers.LeftCtrl : 0) | (m.Trigger.Shift ? KeyModifiers.LeftShift : 0) | (m.Trigger.Alt ? KeyModifiers.LeftAlt : 0);
-        byte usage = HidUsage.FKey((int)m.Trigger.Key - (int)TriggerKey.F13 + 13);
-        BindingAction action = mods == KeyModifiers.None ? new BindingAction.FKey(usage) : new BindingAction.StandardKey(mods, usage);
+        if (_bindKey.SelectedItem is not KeyItem key || !m.Trigger.UsesF13ToF24) return;
+        var action = IoCenter.IoCenterMacros.TriggerAction(m.Trigger);
         _status.Text = "Binding…";
         try
         {
@@ -283,19 +311,24 @@ public sealed class MacrosPage : Ui.Page
         catch (Exception e) { _status.Text = e is KeyboardUnavailableException ? e.Message : $"Something went wrong: {e.Message}"; }
     }
 
+    /// <summary>Trigger keys in <see cref="MacroTrigger.AllKeys"/> order, shown as "K", "F5", "Num 1", "Page Up", …</summary>
+    static ComboBox TriggerCombo()
+    {
+        var c = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Font = Ui.Body, FlatStyle = FlatStyle.Flat,
+            FormattingEnabled = true, MaxDropDownItems = 20,
+        };
+        foreach (var k in MacroTrigger.AllKeys) c.Items.Add(k);
+        c.Format += (_, e) => { if (e.ListItem is TriggerKey k) e.Value = MacroTrigger.KeyName(k); };
+        return c;
+    }
+
     static Label Hint(string text) => new() { Text = text, AutoSize = true, ForeColor = Ui.Dim, Margin = new Padding(6, 9, 6, 0) };
 
     string? Prompt(string label, string initial = "") => Ui.Prompt(FindForm(), "OverMount", label, initial);
 
     sealed record KeyItem(byte Id, string Name) { public override string ToString() => Name; }
-
-    /// <summary>FreeTrigger over the page's unsaved list.</summary>
-    sealed class MacroManagerView(List<Macro> macros)
-    {
-        public MacroTrigger FreeTrigger() =>
-            Enum.GetValues<TriggerKey>().Select(k => new MacroTrigger(k)).FirstOrDefault(t => macros.All(m => m.Trigger != t))
-            ?? new MacroTrigger(TriggerKey.F24, Ctrl: true);
-    }
 }
 
 /// <summary>Captures one key or shortcut the user presses.</summary>

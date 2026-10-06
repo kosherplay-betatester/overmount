@@ -70,11 +70,41 @@ public sealed class HidSharpLampArrayTransport : ILampArrayTransport
     public static HidSharpLampArrayTransport? TryOpen(int vendorId = VendorId, int productId = ProductId)
     {
         if (Find(vendorId, productId) is not { } found) return null;
-        var (device, descriptor) = found;
+        return TryOpen(found.Device, found.Descriptor);
+    }
+
+    /// <summary>Opens a LampArray collection found by <see cref="Find"/> or <see cref="FindOthers"/>; null when it can't be opened.</summary>
+    public static HidSharpLampArrayTransport? TryOpen(HidDevice device, byte[] descriptor)
+    {
         if (!device.TryOpen(out HidStream stream)) return null;
         stream.ReadTimeout = 1000;
         stream.WriteTimeout = 1000;
         return new HidSharpLampArrayTransport(device, stream, descriptor);
+    }
+
+    /// <summary>
+    /// Every other LampArray collection on the PC (the Windows Dynamic Lighting standard: keyboards and laptops from
+    /// Razer, Logitech, ASUS, Corsair…), be quiet! keyboards excluded. Read-only enumeration: nothing is opened.
+    /// </summary>
+    public static IReadOnlyList<(HidDevice Device, byte[] Descriptor)> FindOthers()
+    {
+        var found = new List<(HidDevice, byte[])>();
+        foreach (var device in DeviceList.Local.GetHidDevices())
+        {
+            if (device.VendorID == VendorId) continue;
+            byte[] descriptor;
+            try
+            {
+                if (device.GetMaxFeatureReportLength() <= 1) continue;
+                descriptor = device.GetRawReportDescriptor();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException)
+            {
+                continue;
+            }
+            if (IsLampArray(descriptor)) found.Add((device, descriptor));
+        }
+        return found;
     }
 
     /// <summary>

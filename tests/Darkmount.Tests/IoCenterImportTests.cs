@@ -168,6 +168,25 @@ public class IoCenterImportTests
     }
 
     [Fact]
+    public void Launchers_ignore_any_keyboard_triggers_and_still_get_F13_to_F24()
+    {
+        var macros = new List<Macro> { new() { Name = "Mine", Trigger = new MacroTrigger(TriggerKey.K, Ctrl: true), Steps = [new DelayStep(10)] } };
+
+        IoCenterMacros.Attach(Import(ProfileJson()), macros);
+
+        Assert.Equal(new MacroTrigger(TriggerKey.F13), macros[1].Trigger);
+        Assert.Equal(new MacroTrigger(TriggerKey.F14), macros[2].Trigger);
+    }
+
+    [Fact]
+    public void Trigger_action_sends_Win_and_refuses_non_F13_to_F24_triggers()
+    {
+        Assert.Equal(new BindingAction.StandardKey(KeyModifiers.LeftWin | KeyModifiers.LeftCtrl, HidUsage.FKey(15)),
+            IoCenterMacros.TriggerAction(new MacroTrigger(TriggerKey.F15, Ctrl: true, Win: true)));
+        Assert.Throws<ArgumentException>(() => IoCenterMacros.TriggerAction(new MacroTrigger(TriggerKey.K, Ctrl: true)));
+    }
+
+    [Fact]
     public void Linked_app_becomes_the_profile_game()
     {
         var r = Import(ProfileJson(linkedApp: "C:/Games/Shooter/shooter.exe"));

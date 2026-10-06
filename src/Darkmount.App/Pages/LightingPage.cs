@@ -247,6 +247,7 @@ public sealed class LightingPage : Ui.Page
                 var l = new Lighting(q);
                 return (l.GetMode(), l.GetLayerConfig());
             });
+            if (IsDisposed) return; // the window closed while the keyboard answered
             if (edits != _edits || _applyTimer.Enabled) { _status.Text = ""; return; } // you changed something meanwhile
             // The keyboard may report its angled gradient variant; it's still a gradient here.
             if (config.ColorMode == ColorMode.OrientedGradient) config = config with { ColorMode = ColorMode.Gradient };
@@ -255,7 +256,7 @@ public sealed class LightingPage : Ui.Page
                 ? "The keyboard was left in desktop-driven lighting; any change here switches it back to this built-in effect."
                 : mode == LightingMode.Off ? "The keyboard's lighting is off." : "Showing the keyboard's current effect.";
         }
-        catch (Exception e) { _status.Text = Friendly(e); }
+        catch (Exception e) { if (!IsDisposed) _status.Text = Friendly(e); }
     }
 
     async Task Apply()
@@ -275,9 +276,9 @@ public sealed class LightingPage : Ui.Page
                 if (l.GetMode() != LightingMode.General) l.SetMode(LightingMode.General);
                 l.SetLayerConfig(Lighting.TopLayer, config);
             });
-            _status.Text = $"✔ {LightingEffects.Find(_effect)!.Name} saved to the keyboard.";
+            if (!IsDisposed) _status.Text = $"✔ {LightingEffects.Find(_effect)!.Name} saved to the keyboard.";
         }
-        catch (Exception e) { _status.Text = Friendly(e); }
+        catch (Exception e) { if (!IsDisposed) _status.Text = Friendly(e); }
     }
 
     void RestoreOriginal()

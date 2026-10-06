@@ -16,7 +16,8 @@ public static class IoCenterMacros
         var bindings = result.Profile.Keyboard.Bindings ??= [];
         foreach (var launcher in result.Launchers)
         {
-            var macro = macros.FirstOrDefault(m => m.Steps is [var only] && only == launcher.Step);
+            // Only a macro a Dark Mount key can send (F13–F24): any-keyboard combinations can't be bound to a key.
+            var macro = macros.FirstOrDefault(m => m.Steps is [var only] && only == launcher.Step && m.Trigger.UsesF13ToF24);
             if (macro is null)
             {
                 if (FreeTrigger(macros) is not { } trigger)
@@ -34,11 +35,16 @@ public static class IoCenterMacros
         return notes;
     }
 
-    /// <summary>What the keyboard sends for a trigger: an F13–F24 key, with Ctrl/Shift/Alt when the trigger has them.</summary>
+    /// <summary>
+    /// What the keyboard sends for a trigger: an F13–F24 key, with Ctrl/Shift/Alt/Win when the trigger has them.
+    /// Other triggers (e.g. Ctrl+Shift+K) are pressed on any keyboard and can't be bound.
+    /// </summary>
     public static BindingAction TriggerAction(MacroTrigger t)
     {
+        if (!t.UsesF13ToF24) throw new ArgumentException($"Only F13–F24 triggers can be bound to a key, not {t}.", nameof(t));
         byte usage = HidUsage.FKey((int)t.Key - (int)TriggerKey.F13 + 13);
-        var mods = (t.Ctrl ? KeyModifiers.LeftCtrl : 0) | (t.Shift ? KeyModifiers.LeftShift : 0) | (t.Alt ? KeyModifiers.LeftAlt : 0);
+        var mods = (t.Ctrl ? KeyModifiers.LeftCtrl : 0) | (t.Shift ? KeyModifiers.LeftShift : 0) | (t.Alt ? KeyModifiers.LeftAlt : 0)
+                 | (t.Win ? KeyModifiers.LeftWin : 0);
         return mods == KeyModifiers.None ? new BindingAction.FKey(usage) : new BindingAction.StandardKey(mods, usage);
     }
 
@@ -48,7 +54,7 @@ public static class IoCenterMacros
         var used = macros.Select(m => m.Trigger).ToHashSet();
         foreach (var (ctrl, shift, alt) in new[] { (false, false, false), (true, false, false), (false, true, false), (false, false, true),
                      (true, true, false), (true, false, true), (false, true, true), (true, true, true) })
-            foreach (var key in Enum.GetValues<TriggerKey>())
+            foreach (var key in MacroTrigger.AllKeys.Where(MacroTrigger.IsF13ToF24))
                 if (new MacroTrigger(key, ctrl, shift, alt) is var t && !used.Contains(t)) return t;
         return null;
     }

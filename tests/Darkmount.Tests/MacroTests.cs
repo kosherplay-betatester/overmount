@@ -62,7 +62,10 @@ sealed class MacroFakeKeyState : IKeyState
     int _ctrlChecks;
     public int CtrlHeldForChecks;
 
-    public bool IsDown(int vk) => vk == VirtualKeys.Control && Interlocked.Increment(ref _ctrlChecks) <= CtrlHeldForChecks;
+    /// <summary>The key reported as held (Ctrl unless a test says otherwise).</summary>
+    public int HeldVk = VirtualKeys.Control;
+
+    public bool IsDown(int vk) => vk == HeldVk && Interlocked.Increment(ref _ctrlChecks) <= CtrlHeldForChecks;
 }
 
 /// <summary>Logs each wait; only really sleeps (up to <see cref="RealWaitCapMs"/>) when a test needs concurrency.</summary>
@@ -149,8 +152,19 @@ public class MacroTriggerTests
     [InlineData(TriggerKey.F13, true, false, false, "Ctrl+F13")]
     [InlineData(TriggerKey.F18, false, true, false, "Shift+F18")]
     [InlineData(TriggerKey.F24, true, true, true, "Ctrl+Alt+Shift+F24")]
+    [InlineData(TriggerKey.K, true, false, true, "Ctrl+Alt+K")]
+    [InlineData(TriggerKey.NumPad1, true, false, false, "Ctrl+Num 1")]
+    [InlineData(TriggerKey.D7, false, true, false, "Shift+7")]
+    [InlineData(TriggerKey.PageUp, false, false, true, "Alt+Page Up")]
     public void ToString_formats_modifiers_then_key(TriggerKey key, bool ctrl, bool shift, bool alt, string expected)
         => Assert.Equal(expected, new MacroTrigger(key, ctrl, shift, alt).ToString());
+
+    [Fact]
+    public void ToString_puts_Win_first()
+    {
+        Assert.Equal("Win+Shift+F5", new MacroTrigger(TriggerKey.F5, Shift: true, Win: true).ToString());
+        Assert.Equal("Win+Ctrl+Alt+Shift+F13", new MacroTrigger(TriggerKey.F13, true, true, true, true).ToString());
+    }
 
     [Theory]
     [InlineData("F13", TriggerKey.F13, false, false, false)]
@@ -158,10 +172,34 @@ public class MacroTriggerTests
     [InlineData(" shift + alt + f20 ", TriggerKey.F20, false, true, true)]
     [InlineData("Control+F24", TriggerKey.F24, true, false, false)]
     [InlineData("Alt+Shift+Ctrl+F16", TriggerKey.F16, true, true, true)]
+    [InlineData("Ctrl+Alt+Shift+K", TriggerKey.K, true, true, true)]
+    [InlineData("ctrl+a", TriggerKey.A, true, false, false)]
+    [InlineData("Ctrl+Num 1", TriggerKey.NumPad1, true, false, false)]
+    [InlineData("Ctrl+num1", TriggerKey.NumPad1, true, false, false)]
+    [InlineData("Ctrl+NumPad1", TriggerKey.NumPad1, true, false, false)]
+    [InlineData("Ctrl+5", TriggerKey.D5, true, false, false)]
+    [InlineData("Shift+F1", TriggerKey.F1, false, true, false)]
+    [InlineData("Ctrl+Shift+F12", TriggerKey.F12, true, true, false)]
+    [InlineData("Ctrl+Page Down", TriggerKey.PageDown, true, false, false)]
+    [InlineData("Ctrl+pageup", TriggerKey.PageUp, true, false, false)]
+    [InlineData("Alt+Print Screen", TriggerKey.PrintScreen, false, false, true)]
+    [InlineData("Ctrl+Scroll Lock", TriggerKey.ScrollLock, true, false, false)]
+    [InlineData("Ctrl+Pause", TriggerKey.Pause, true, false, false)]
+    [InlineData("Alt+Insert", TriggerKey.Insert, false, false, true)]
     public void TryParse_accepts_trigger_keys_with_modifiers(string text, TriggerKey key, bool ctrl, bool shift, bool alt)
     {
         Assert.True(MacroTrigger.TryParse(text, out var trigger));
         Assert.Equal(new MacroTrigger(key, ctrl, shift, alt), trigger);
+    }
+
+    [Theory]
+    [InlineData("Win+Shift+F5", TriggerKey.F5, false, true)]
+    [InlineData("win+f13", TriggerKey.F13, false, false)]
+    [InlineData("Windows+Ctrl+K", TriggerKey.K, true, false)]
+    public void TryParse_accepts_Win(string text, TriggerKey key, bool ctrl, bool shift)
+    {
+        Assert.True(MacroTrigger.TryParse(text, out var trigger));
+        Assert.Equal(new MacroTrigger(key, ctrl, shift, Win: true), trigger);
     }
 
     [Theory]
@@ -170,12 +208,22 @@ public class MacroTriggerTests
     [InlineData("Ctrl")]
     [InlineData("F12")]
     [InlineData("F25")]
-    [InlineData("Ctrl+A")]
-    [InlineData("Win+F13")]
+    [InlineData("A")]
+    [InlineData("k")]
+    [InlineData("5")]
+    [InlineData("Num 1")]
+    [InlineData("Page Up")]
+    [InlineData("Ctrl+F25")]
+    [InlineData("Ctrl+Delete")]
+    [InlineData("Ctrl+Space")]
+    [InlineData("Ctrl+12")]
     [InlineData("F13+F14")]
+    [InlineData("Ctrl+K+L")]
     [InlineData("Ctrl++F13")]
     [InlineData("Ctrl+Ctrl+F13")]
+    [InlineData("Win+Win+K")]
     [InlineData("124")]
+    [InlineData("Ctrl+124")]
     public void TryParse_rejects_anything_else(string? text)
     {
         Assert.False(MacroTrigger.TryParse(text, out var trigger));
@@ -183,15 +231,24 @@ public class MacroTriggerTests
     }
 
     [Fact]
-    public void Every_trigger_round_trips_through_text()
+    public void Every_valid_trigger_round_trips_through_text_and_invalid_ones_do_not_parse()
     {
+        int valid = 0;
         foreach (var key in Enum.GetValues<TriggerKey>())
-        for (int mods = 0; mods < 8; mods++)
+        for (int mods = 0; mods < 16; mods++)
         {
-            var t = new MacroTrigger(key, (mods & 1) != 0, (mods & 2) != 0, (mods & 4) != 0);
-            Assert.True(MacroTrigger.TryParse(t.ToString(), out var back));
-            Assert.Equal(t, back);
+            var t = new MacroTrigger(key, (mods & 1) != 0, (mods & 2) != 0, (mods & 4) != 0, (mods & 8) != 0);
+            if (t.IsValid)
+            {
+                Assert.True(MacroTrigger.TryParse(t.ToString(), out var back), t.ToString());
+                Assert.Equal(t, back);
+                valid++;
+            }
+            else Assert.False(MacroTrigger.TryParse(t.ToString(), out _), t.ToString());
         }
+        // F13–F24: any of the 16 modifier sets; letters/digits/numpad (46): Ctrl or Win, not exactly Ctrl+Alt (11);
+        // Insert/Home/End/Page Up/Page Down (5): Ctrl, Alt or Win (14); F1–F12, Print Screen, Scroll Lock, Pause (15): any (15).
+        Assert.Equal(12 * 16 + 46 * 11 + 5 * 14 + 15 * 15, valid);
     }
 
     [Fact]
@@ -199,7 +256,79 @@ public class MacroTriggerTests
     {
         Assert.Equal(0x7C, (int)TriggerKey.F13);
         Assert.Equal(0x87, (int)TriggerKey.F24);
-        Assert.Equal(12, Enum.GetValues<TriggerKey>().Length);
+        Assert.Equal(0x41, (int)TriggerKey.A);
+        Assert.Equal(0x5A, (int)TriggerKey.Z);
+        Assert.Equal(0x30, (int)TriggerKey.D0);
+        Assert.Equal(0x39, (int)TriggerKey.D9);
+        Assert.Equal(0x70, (int)TriggerKey.F1);
+        Assert.Equal(0x7B, (int)TriggerKey.F12);
+        Assert.Equal(0x60, (int)TriggerKey.NumPad0);
+        Assert.Equal(0x69, (int)TriggerKey.NumPad9);
+        Assert.Equal(VirtualKeys.Insert, (int)TriggerKey.Insert);
+        Assert.Equal(VirtualKeys.Home, (int)TriggerKey.Home);
+        Assert.Equal(VirtualKeys.End, (int)TriggerKey.End);
+        Assert.Equal(VirtualKeys.PageUp, (int)TriggerKey.PageUp);
+        Assert.Equal(VirtualKeys.PageDown, (int)TriggerKey.PageDown);
+        Assert.Equal(VirtualKeys.Pause, (int)TriggerKey.Pause);
+        Assert.Equal(VirtualKeys.PrintScreen, (int)TriggerKey.PrintScreen);
+        Assert.Equal(0x91, (int)TriggerKey.ScrollLock);
+        Assert.Equal(12, Enum.GetValues<TriggerKey>().Count(MacroTrigger.IsF13ToF24));
+    }
+
+    [Fact]
+    public void Picker_lists_every_key_once_with_F13_to_F24_first()
+    {
+        Assert.Equal(Enum.GetValues<TriggerKey>().Order(), MacroTrigger.AllKeys.Order());
+        Assert.Equal(Enum.GetValues<TriggerKey>().Length, MacroTrigger.AllKeys.Distinct().Count());
+        Assert.All(MacroTrigger.AllKeys.Take(12), k => Assert.True(MacroTrigger.IsF13ToF24(k)));
+    }
+
+    [Theory]
+    [InlineData(TriggerKey.A, false, false, false, false, false)]   // plain letter: would hijack typing
+    [InlineData(TriggerKey.D1, false, false, false, false, false)]
+    [InlineData(TriggerKey.F5, false, false, false, false, false)]
+    [InlineData(TriggerKey.NumPad3, false, false, false, false, false)]
+    [InlineData(TriggerKey.Home, false, false, false, false, false)]
+    [InlineData(TriggerKey.A, true, false, false, false, true)]
+    [InlineData(TriggerKey.K, false, true, false, false, false)]    // Shift+K is a capital K
+    [InlineData(TriggerKey.D7, false, true, false, false, false)]   // Shift+7 is "&"
+    [InlineData(TriggerKey.K, false, false, true, false, false)]    // Alt+K opens app menus
+    [InlineData(TriggerKey.K, true, false, true, false, false)]     // Ctrl+Alt = AltGr on many layouts
+    [InlineData(TriggerKey.K, true, true, true, false, true)]
+    [InlineData(TriggerKey.K, false, false, false, true, true)]     // Win+K
+    [InlineData(TriggerKey.Home, false, true, false, false, false)] // Shift+Home selects text
+    [InlineData(TriggerKey.Insert, false, true, false, false, false)] // Shift+Insert pastes
+    [InlineData(TriggerKey.Home, false, false, true, false, true)]
+    [InlineData(TriggerKey.F5, false, true, false, false, true)]
+    [InlineData(TriggerKey.F5, false, false, true, false, true)]
+    [InlineData(TriggerKey.NumPad3, false, false, false, true, true)] // Win counts as a modifier
+    [InlineData(TriggerKey.F13, false, false, false, false, true)]   // F13–F24 work alone
+    [InlineData(TriggerKey.F24, false, false, false, false, true)]
+    [InlineData(TriggerKey.F13, false, false, false, true, true)]
+    public void IsValid_needs_a_modifier_except_for_F13_to_F24(TriggerKey key, bool ctrl, bool shift, bool alt, bool win, bool expected)
+        => Assert.Equal(expected, new MacroTrigger(key, ctrl, shift, alt, win).IsValid);
+
+    [Fact]
+    public void Unknown_key_codes_are_invalid_even_with_modifiers()
+    {
+        Assert.False(new MacroTrigger((TriggerKey)VirtualKeys.Delete, Ctrl: true).IsValid);
+        Assert.False(new MacroTrigger((TriggerKey)0x88, Ctrl: true).IsValid);
+    }
+
+    [Fact]
+    public void Free_trigger_only_picks_F13_to_F24()
+    {
+        var macros = new List<Macro>
+        {
+            new() { Trigger = new(TriggerKey.F13) },
+            new() { Trigger = new(TriggerKey.A, Ctrl: true) },
+            new() { Trigger = new(TriggerKey.F14, Win: true) },
+        };
+
+        Assert.Equal(new MacroTrigger(TriggerKey.F14), MacroManager.FreeTrigger(macros));
+
+        var all = MacroTrigger.AllKeys.Where(MacroTrigger.IsF13ToF24).Select(k => new Macro { Trigger = new(k) }).ToList();
+        Assert.Equal(new MacroTrigger(TriggerKey.F24, Ctrl: true), MacroManager.FreeTrigger(all));
     }
 }
 
@@ -294,6 +423,54 @@ public sealed class MacroStoreTests : IDisposable
         Assert.Contains("\"Key\": \"F13\"", json);
         Assert.Contains("\"Modifiers\": \"Ctrl, Shift\"", json);
         Assert.DoesNotContain("IsValid", json);
+        Assert.DoesNotContain("UsesF13ToF24", json);
+        Assert.DoesNotContain("HasModifier", json);
+    }
+
+    [Fact]
+    public void Macro_files_from_older_versions_load_unchanged()
+    {
+        // As 1.5 wrote them: F13–F24 by name (or a number when hand-edited), Ctrl/Shift/Alt, no Win.
+        var json = """
+            [
+              { "Name": "a", "Trigger": { "Key": "F13", "Ctrl": false, "Shift": false, "Alt": false }, "Steps": [], "Enabled": true },
+              { "Name": "b", "Trigger": { "Key": "F21", "Ctrl": true, "Shift": false, "Alt": true }, "Steps": [], "Enabled": true },
+              { "Name": "c", "Trigger": { "Key": "F24", "Ctrl": true, "Shift": true, "Alt": true }, "Steps": [], "Enabled": false },
+              { "Name": "d", "Trigger": { "Key": 125, "Shift": true }, "Steps": [], "Enabled": true }
+            ]
+            """;
+
+        var list = MacroStore.Deserialize(json);
+
+        Assert.Equal(
+            [new MacroTrigger(TriggerKey.F13), new MacroTrigger(TriggerKey.F21, Ctrl: true, Alt: true),
+             new MacroTrigger(TriggerKey.F24, true, true, true), new MacroTrigger(TriggerKey.F14, Shift: true)],
+            list.Select(m => m.Trigger));
+        Assert.Equal([true, true, false, true], list.Select(m => m.Enabled));
+        Assert.All(list, m => Assert.False(m.Trigger.Win));
+    }
+
+    [Fact]
+    public void Any_keyboard_triggers_round_trip_through_json()
+    {
+        var m = new Macro { Trigger = new MacroTrigger(TriggerKey.K, Ctrl: true, Alt: true, Win: true) };
+
+        var json = MacroStore.Serialize([m]);
+        var back = Assert.Single(MacroStore.Deserialize(json));
+
+        Assert.Equal(m.Trigger, back.Trigger);
+        Assert.True(back.Enabled);
+        Assert.Contains("\"Key\": \"K\"", json);
+        Assert.Contains("\"Win\": true", json);
+    }
+
+    [Fact]
+    public void Loading_a_plain_key_trigger_disables_the_macro()
+    {
+        var back = Assert.Single(MacroStore.Deserialize("""[{ "Name": "x", "Trigger": { "Key": "K" }, "Enabled": true }]"""));
+
+        Assert.False(back.Enabled);
+        Assert.True(back.Trigger.IsValid);
     }
 
     [Fact]
@@ -798,6 +975,18 @@ public class MacroPlayerTests
     }
 
     [Fact]
+    public void Waits_for_a_held_Win_key_too()
+    {
+        using var rig = new MacroPlayerRig();
+        rig.Keys.HeldVk = LWin;
+        rig.Keys.CtrlHeldForChecks = 2;
+
+        rig.PlayToEnd(TestMacro.Of(new KeyTapStep(A)));
+
+        Assert.Equal(["wait 10", "wait 10", Down(A), Up(A)], rig.Log.All);
+    }
+
+    [Fact]
     public void Modifier_wait_gives_up_after_one_second()
     {
         using var rig = new MacroPlayerRig();
@@ -953,7 +1142,7 @@ public class MacroShellTests
 
 public class MacroHotkeysTests
 {
-    const uint ModAlt = 0x1, ModCtrl = 0x2, ModShift = 0x4, NoRepeat = 0x4000;
+    const uint ModAlt = 0x1, ModCtrl = 0x2, ModShift = 0x4, ModWin = 0x8, NoRepeat = 0x4000;
 
     [DllImport("user32.dll")]
     static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -980,7 +1169,25 @@ public class MacroHotkeysTests
         Assert.Equal(["Dup", "Taken", "Bad"], failures.Select(f => f.Macro.Name));
         Assert.Contains("\"A\"", failures[0].Reason);
         Assert.Contains("another program", failures[1].Reason);
+        Assert.Contains("need Ctrl or Win", failures[2].Reason);
         Assert.Same(failures, hotkeys.Failures);
+    }
+
+    [Fact]
+    public void Any_keyboard_combinations_register_with_their_virtual_key()
+    {
+        var api = new MacroFakeHotkeyApi { TakenByOtherPrograms = { (uint)TriggerKey.L } };
+        using var hotkeys = new MacroHotkeys(api);
+        var k = new Macro { Name = "K", Trigger = new(TriggerKey.K, Ctrl: true, Shift: true) };
+        var num = new Macro { Name = "Num", Trigger = new(TriggerKey.NumPad1, Win: true) };
+        var taken = new Macro { Name = "Taken", Trigger = new(TriggerKey.L, Ctrl: true) };
+
+        var failures = hotkeys.Update([k, num, taken]);
+
+        Assert.Contains((ModCtrl | ModShift | NoRepeat, 0x4Bu), api.Registered.Values);
+        Assert.Contains((ModWin | NoRepeat, 0x61u), api.Registered.Values);
+        var failure = Assert.Single(failures);
+        Assert.Equal("Ctrl+L is already taken by another program.", failure.Reason);
     }
 
     [Fact]
@@ -1027,4 +1234,11 @@ public class MacroHotkeysTests
     [InlineData(true, true, true, ModCtrl | ModShift | ModAlt)]
     public void Modifier_flags_match_RegisterHotKey(bool ctrl, bool shift, bool alt, uint expected)
         => Assert.Equal(expected | NoRepeat, MacroHotkeys.HotkeyModifiers(new MacroTrigger(TriggerKey.F13, ctrl, shift, alt)));
+
+    [Fact]
+    public void Win_maps_to_MOD_WIN()
+    {
+        Assert.Equal(ModWin | NoRepeat, MacroHotkeys.HotkeyModifiers(new MacroTrigger(TriggerKey.K, Win: true)));
+        Assert.Equal(ModWin | ModShift | NoRepeat, MacroHotkeys.HotkeyModifiers(new MacroTrigger(TriggerKey.F5, Shift: true, Win: true)));
+    }
 }

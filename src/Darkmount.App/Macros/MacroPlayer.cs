@@ -17,7 +17,7 @@ public enum MacroRunResult { Completed, Stopped, Failed }
 /// <summary>
 /// Plays macros on background threads. Each run:
 /// <list type="bullet">
-/// <item>first waits (max <see cref="ModifierReleaseTimeout"/>) until Ctrl/Shift/Alt are physically released, so the
+/// <item>first waits (max <see cref="ModifierReleaseTimeout"/>) until Ctrl/Shift/Alt/Win are physically released, so the
 /// trigger's modifiers don't combine with the injected keys;</item>
 /// <item>snapshots the step list, so editing a macro never disturbs a running copy;</item>
 /// <item>always releases every key/button it pressed and did not release itself — on completion, stop or error.</item>
@@ -207,7 +207,8 @@ public sealed class MacroPlayer : IDisposable
         run.WaitedThisIteration = false;
     }
 
-    bool AnyModifierDown() => _keys.IsDown(VirtualKeys.Control) || _keys.IsDown(VirtualKeys.Shift) || _keys.IsDown(VirtualKeys.Menu);
+    bool AnyModifierDown() => _keys.IsDown(VirtualKeys.Control) || _keys.IsDown(VirtualKeys.Shift) || _keys.IsDown(VirtualKeys.Menu)
+                              || _keys.IsDown(VirtualKeys.LWin) || _keys.IsDown(VirtualKeys.RWin);
 
     void Play(Run run, MacroStep step)
     {

@@ -22,7 +22,9 @@ public sealed class HomePage : Ui.Page
     string _lastChecks = "", _lastError = "";
 
     /// <param name="hasDock">False on Light Mount keyboards: the dock tile, dock actions and dock tips are left out.</param>
-    public HomePage(Func<HomeStatus> status, Action<ScreenMode> setMode, Action<string> openPage, Action togglePause, bool hasDock = true)
+    /// <param name="beQuiet">False on other makers' keyboards: be quiet!-only actions and tips are left out too.</param>
+    public HomePage(Func<HomeStatus> status, Action<ScreenMode> setMode, Action<string> openPage, Action togglePause, bool hasDock = true,
+        bool beQuiet = true)
         : base("Welcome to OverMount", "Your keyboard, your way. Everything below updates live.")
     {
         _status = status;
@@ -40,11 +42,9 @@ public sealed class HomePage : Ui.Page
                 Big("Show animation", () => setMode(ScreenMode.Animation)),
                 Big("be quiet! screen", () => setMode(ScreenMode.DockDefault)),
             ]);
-        actions.Controls.AddRange([
-            Big("Lighting", () => openPage("Lighting")),
-            Big("Remap keys", () => openPage("Keys")),
-            Big("Macros", () => openPage("Macros")),
-        ]);
+        actions.Controls.Add(Big("Lighting", () => openPage("Lighting")));
+        if (beQuiet) actions.Controls.Add(Big("Remap keys", () => openPage("Keys")));
+        actions.Controls.Add(Big("Macros", () => openPage("Macros")));
         if (hasDock) actions.Controls.Add(Big("Pause / resume", togglePause));
         AddFull(actions);
 
@@ -55,12 +55,16 @@ public sealed class HomePage : Ui.Page
         AddFull(_checks);
 
         Heading("Tips");
-        AddFull(Ui.Note(
-            "• Ctrl+Alt+Shift+D cycles the dock: dashboard → animation → be quiet! screen.\n" +
-            "• If the dock screen is dark, press a dock button once — it only accepts pictures while awake.\n" +
-            "• Coming from IO Center? Profiles → Import from IO Center brings your lighting, keys and display-key pictures over.\n" +
-            "• Your original keyboard settings are backed up before the first change: Profiles → Restore.\n" +
-            "• Close OverMount from the tray icon to hand everything back to the keyboard.", 760));
+        AddFull(Ui.Note(beQuiet
+            ? "• Ctrl+Alt+Shift+D cycles the dock: dashboard → animation → be quiet! screen.\n" +
+              "• If the dock screen is dark, press a dock button once — it only accepts pictures while awake.\n" +
+              "• Coming from IO Center? Profiles → Import from IO Center brings your lighting, keys and display-key pictures over.\n" +
+              "• Your original keyboard settings are backed up before the first change: Profiles → Restore.\n" +
+              "• Close OverMount from the tray icon to hand everything back to the keyboard."
+            : "• Lighting → Your RGB devices shows every keyboard OverMount lights; untick one to leave it alone.\n" +
+              "• A laptop or keyboard missing there? Lighting → Set up OpenRGB lights hundreds more.\n" +
+              "• Macros run on any keyboard: give one a combination such as Ctrl+Shift+K.\n" +
+              "• Close OverMount from the tray icon to give the lighting back to your keyboard.", 760));
 
         _timer.Tick += (_, _) => ShowStatus();
         VisibleChanged += (_, _) => { if (Visible) { ShowStatus(); _timer.Start(); } else _timer.Stop(); };
