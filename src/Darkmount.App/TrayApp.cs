@@ -137,7 +137,7 @@ public sealed class TrayApp : ApplicationContext
             };
             _sensorUpdateTimer.Start();
         }
-        if (!_settings.OpenRgbOffered)
+        if (_settings.OpenRgbOfferedFor != Setup.Installer.CurrentVersion.ToString(3))
         {
             // Once: a laptop or keyboard OpenRGB can light, and nothing lights it yet. Give the engine time to look first.
             _openRgbTimer.Interval = Environment.TickCount64 < 5 * 60 * 1000 ? 75_000 : 15_000;
@@ -164,6 +164,7 @@ public sealed class TrayApp : ApplicationContext
         _overlayTimer.Start();
         _pipeline.Start();
         _rgb.Start();
+        _ = PrepareOpenRgb();
         Log.Write("OverMount started");
     }
 
@@ -418,6 +419,16 @@ public sealed class TrayApp : ApplicationContext
         if (model.HasMediaDock)
             checks.Add(new("Dock screen is awake", !_dock.DockUnresponsive, false,
                 _dock.DockUnresponsive ? "Press any dock button once — the dock only accepts pictures while its screen is on." : "The dock is receiving pictures."));
+        if (_openRgbHardware is { } needsOpenRgb && !_rgb.Devices.Any(d => d.Active && d.Via == LightDevices.LightVia.WindowsStandard))
+        {
+            bool lit = _rgb.Devices.Any(d => d.Active && d.Via == LightDevices.LightVia.OpenRgb);
+            checks.Add(new("Keyboard lighting (OpenRGB)", lit, false,
+                lit ? $"OverMount lights your {needsOpenRgb} through OpenRGB."
+                : _settingUpOpenRgb ? "Setting up OpenRGB… (Windows asks for permission once)"
+                : _rgb.OpenRgbConnected ? "OpenRGB runs but doesn't list this keyboard yet (it can take a few seconds after it starts). If it stays like this, click Set up to restart it with administrator rights."
+                : $"Your {needsOpenRgb}'s lighting needs OpenRGB (free). Set up installs it and starts it with Windows (one permission prompt).",
+                lit || _settingUpOpenRgb ? null : "Set up", lit || _settingUpOpenRgb ? null : SetUpOpenRgbFromHome));
+        }
         checks.Add(new("Starts with Windows", Autostart.IsEnabled(), true, "So your lighting, macros and dashboard are always on.",
             "Turn on", () => { _settings.StartWithWindows = true; TrySetAutostart(true); SaveSettings(); }));
         if (!beQuiet)
@@ -425,7 +436,8 @@ public sealed class TrayApp : ApplicationContext
             // Another maker's keyboard: no dock, IO Center or be quiet! lighting checks. CPU temperature only feeds the
             // temperature lighting effects there, so it's optional.
             checks = [.. checks
-                .Where(c => c.Title is "RGB keyboard" or "Keyboard connected" or "CPU temperature" or "CPU sensor is up to date" or "Starts with Windows")
+                .Where(c => c.Title is "RGB keyboard" or "Keyboard connected" or "Keyboard lighting (OpenRGB)" or "CPU temperature"
+                    or "CPU sensor is up to date" or "Starts with Windows")
                 .Select(c => c.Title == "CPU temperature" ? c with { Optional = true } : c)];
         }
 
@@ -693,7 +705,7 @@ public sealed class TrayApp : ApplicationContext
     /// </summary>
     async Task OfferOpenRgbOnce()
     {
-        if (_exiting || _ioPromptOpen || _settings.OpenRgbOffered) return;
+        if (_exiting || _ioPromptOpen || _settings.OpenRgbOfferedFor == Setup.Installer.CurrentVersion.ToString(3)) return;
         _ioPromptOpen = true;
         TaskDialogButton? result = null;
         TaskDialogButton? install = null;
@@ -702,7 +714,7 @@ public sealed class TrayApp : ApplicationContext
             bool standardLit = _rgb.Devices.Any(d => d.Active && d.Via != LightDevices.LightVia.BeQuiet);
             var (hardware, reachable, installed) = await Task.Run(() =>
                 (Setup.OpenRgbSetup.FindHardware(), Setup.OpenRgbSetup.ServerReachable(), Setup.OpenRgbSetup.Installed));
-            _settings.OpenRgbOffered = true;
+            _settings.OpenRgbOfferedFor = Setup.Installer.CurrentVersion.ToString(3);
             SaveSettings();
             if (hardware is null || standardLit || reachable || _exiting) return;
             Log.Write($"OpenRGB offer for {hardware} (installed: {installed})");
@@ -711,14 +723,50 @@ public sealed class TrayApp : ApplicationContext
         }
         finally { _ioPromptOpen = false; }
         if (install is null || result != install) return;
-        var outcome = await Task.Run(Setup.OpenRgbSetup.SetUpAsync);
-        Log.Write($"OpenRGB setup: {outcome}");
-        Balloon("OverMount", outcome switch
+        SetUpOpenRgbFromHome();
+    }
+
+    /// <summary>A laptop or keyboard on this PC that needs OpenRGB to be lit (null: none, or not checked yet).</summary>
+    string? _openRgbHardware;
+    bool _settingUpOpenRgb;
+
+    /// <summary>
+    /// At start: finds hardware that needs OpenRGB, and if OpenRGB is set up to start with Windows but its server isn't
+    /// running (closed by the user, or crashed), starts it from its task — no permission prompt.
+    /// </summary>
+    async Task PrepareOpenRgb()
+    {
+        try
         {
-            Setup.OpenRgbSetup.Result.Running => "OpenRGB is running: your keyboard shows up on the Lighting page.",
-            Setup.OpenRgbSetup.Result.Declined => "OpenRGB not set up (permission declined). You can do it later on the Lighting page.",
-            _ => "OpenRGB could not be set up. Try again on the Lighting page.",
-        }, outcome == Setup.OpenRgbSetup.Result.Running ? ToolTipIcon.Info : ToolTipIcon.Warning);
+            await Task.Delay(3000);
+            _openRgbHardware = await Task.Run(Setup.OpenRgbSetup.FindHardware);
+            if (_exiting || !_settings.OpenRgbEnabled) return;
+            bool start = await Task.Run(() => Setup.OpenRgbSetup.StartsWithWindows && !Setup.OpenRgbSetup.ServerReachable() && !Setup.OpenRgbSetup.Running);
+            if (start) Log.Write($"OpenRGB's server isn't running: starting it from its task ({(Setup.OpenRgbSetup.StartFromTask() ? "ok" : "failed")})");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            Log.Write($"OpenRGB check failed: {e.Message}");
+        }
+    }
+
+    /// <summary>"Set up" on Home: installs/starts OpenRGB (one permission prompt).</summary>
+    async void SetUpOpenRgbFromHome()
+    {
+        if (_settingUpOpenRgb) return;
+        _settingUpOpenRgb = true;
+        try
+        {
+            var outcome = await Task.Run(Setup.OpenRgbSetup.SetUpAsync);
+            Log.Write($"OpenRGB setup: {outcome}");
+            Balloon("OverMount", outcome switch
+            {
+                Setup.OpenRgbSetup.Result.Running => "OpenRGB is running: your keyboard shows up on the Lighting page in a few seconds.",
+                Setup.OpenRgbSetup.Result.Declined => "OpenRGB not set up (permission declined).",
+                _ => "OpenRGB could not be set up (see the log).",
+            }, outcome == Setup.OpenRgbSetup.Result.Running ? ToolTipIcon.Info : ToolTipIcon.Warning);
+        }
+        finally { _settingUpOpenRgb = false; }
     }
 
     /// <summary>The OpenRGB offer. Pure, for tests.</summary>

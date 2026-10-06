@@ -10,6 +10,9 @@ public sealed partial class RgbEngine
     OpenRgbLink? _link;
     int _linkGeneration = -1;
 
+    /// <summary>OverMount is connected to OpenRGB's SDK server.</summary>
+    public bool OpenRgbConnected => _link?.Connected == true;
+
     /// <summary>
     /// Each OpenRGB device's own mode, from when OverMount first took it, kept until it is handed back: after OpenRGB
     /// re-lists its devices they report the direct mode OverMount switched them to.

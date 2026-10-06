@@ -89,10 +89,14 @@ public static class Installer
         if (options.Launch)
         {
             progress?.Report("Starting OverMount…");
-            Process.Start(new ProcessStartInfo(InstalledExe) { WorkingDirectory = InstallDir, UseShellExecute = false })?.Dispose();
+            Launch();
         }
         Log.Write($"Installed {CurrentVersion} to {InstallDir}");
     }
+
+    /// <summary>Starts the installed copy.</summary>
+    public static void Launch() =>
+        Process.Start(new ProcessStartInfo(InstalledExe) { WorkingDirectory = InstallDir, UseShellExecute = false })?.Dispose();
 
     /// <summary>
     /// Removes shortcuts, the installed-apps entry and autostart, optionally the user's settings, and deletes the install

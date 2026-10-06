@@ -92,8 +92,8 @@ public sealed class AppSettings
     /// <summary>A be quiet! keyboard has been used on this PC (its features stay visible while it's briefly unplugged).</summary>
     public bool BeQuietSeen { get; set; }
 
-    /// <summary>The one-time offer to set up OpenRGB (for a laptop or keyboard that needs it) was shown.</summary>
-    public bool OpenRgbOffered { get; set; }
+    /// <summary>The app version that last offered to set up OpenRGB at start (offered once per version, only when needed).</summary>
+    public string? OpenRgbOfferedFor { get; set; }
 
     /// <summary>Flash the keyboard red while a dock alert is active.</summary>
     public bool RgbAlertFlash { get; set; } = true;

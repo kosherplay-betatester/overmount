@@ -10,9 +10,14 @@ public sealed class SetupForm : Form
 {
     readonly CheckBox _autostart = Check("Start OverMount with Windows"), _desktop = Check("Put a shortcut on the desktop"),
         _launch = Check("Start OverMount when setup finishes");
+    // Extras that need Windows' permission (asked once, after installing): only offered when they'd help on this PC.
+    internal static Func<string?>? HardwareForScreenshots; // the render tool shows the extras on any PC
+    readonly CheckBox _openRgb = Check(""), _cpuSensor = Check("Show CPU temperature (installs PawnIO, a small signed driver)");
+    readonly Label _extrasNote = Ui.Note("Windows asks for permission once for these. You can also set them up later in OverMount.", 540);
     readonly Label _progress = new() { AutoSize = true, ForeColor = Ui.Dim, Font = Ui.Body, Margin = new Padding(0, 10, 0, 0) };
     readonly Button _install, _portable, _cancel;
     SetupResult _result = SetupResult.Cancelled;
+    bool _working; // installing or setting up extras: the window stays open until it's done
 
     SetupForm()
     {
@@ -41,7 +46,8 @@ public sealed class SetupForm : Form
         header.Controls.Add(titles);
         body.Controls.Add(header);
         body.Controls.Add(Ui.Note("Live PC stats on your Dark Mount's dock, IO Center-style lighting with per-key colours, macros, " +
-                                  "profiles and more — for the be quiet! Dark Mount and Light Mount keyboards.", 540));
+                                  "profiles and more for the be quiet! Dark Mount and Light Mount keyboards, plus lighting and " +
+                                  "macros for other RGB keyboards and gaming laptops.", 540));
         body.Controls.Add(new Label { Height = 8 });
         body.Controls.Add(Ui.Note(installed switch
         {
@@ -54,7 +60,26 @@ public sealed class SetupForm : Form
         _autostart.Checked = installed is null || Autostart.IsEnabledFor(Installer.InstalledExe);
         _desktop.Checked = Installer.DesktopShortcutExists;
         _launch.Checked = true;
-        body.Controls.AddRange([_autostart, _desktop, _launch, _progress]);
+
+        // A laptop or keyboard that OpenRGB lights (and OpenRGB isn't serving it yet), and the CPU sensor if it isn't set up.
+        string? hardware = null;
+        bool beQuiet = false;
+        try
+        {
+            hardware = HardwareForScreenshots?.Invoke() ?? OpenRgbSetup.FindHardware();
+            beQuiet = HidSharp.DeviceList.Local.GetHidDevices(0x373F).Any();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException) { }
+        _openRgb.Text = "Light up this keyboard with OverMount (installs the free OpenRGB)";
+        bool preview = HardwareForScreenshots is not null;
+        _openRgb.Visible = _openRgb.Checked = hardware is not null && (preview || !OpenRgbSetup.ServerReachable());
+        _cpuSensor.Visible = preview || !CpuSensorSetup.IsSetUp;
+        _cpuSensor.Checked = beQuiet; // the dock's dashboard shows it; elsewhere it only feeds temperature lighting
+        _extrasNote.Visible = _openRgb.Visible || _cpuSensor.Visible;
+        if (_openRgb.Visible) _extrasNote.Text = $"Found: {hardware}. " + _extrasNote.Text;
+        _extrasNote.Margin = new Padding(22, 0, 0, 4);
+        if (_extrasNote.Visible) ClientSize = new Size(600, 560);
+        body.Controls.AddRange([_autostart, _desktop, _launch, _openRgb, _cpuSensor, _extrasNote, _progress]);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 60, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(16, 10, 16, 10) };
         _cancel = Ui.Button("Cancel", (_, _) => Close());
@@ -65,6 +90,7 @@ public sealed class SetupForm : Form
 
         Controls.Add(body);
         Controls.Add(buttons);
+        FormClosing += (_, e) => { if (_working && e.CloseReason == CloseReason.UserClosing) e.Cancel = true; };
         Ui.EndLayout(this);
     }
 
@@ -72,25 +98,49 @@ public sealed class SetupForm : Form
 
     async Task Install()
     {
-        foreach (var c in new Control[] { _install, _portable, _cancel, _autostart, _desktop, _launch }) c.Enabled = false;
-        var options = new Installer.Options(_autostart.Checked, _desktop.Checked, _launch.Checked);
+        var all = new Control[] { _install, _portable, _cancel, _autostart, _desktop, _launch, _openRgb, _cpuSensor };
+        foreach (var c in all) c.Enabled = false;
+        bool openRgb = _openRgb.Visible && _openRgb.Checked, cpuSensor = _cpuSensor.Visible && _cpuSensor.Checked;
+        bool extras = openRgb || cpuSensor;
+        var options = new Installer.Options(_autostart.Checked, _desktop.Checked, _launch.Checked && !extras); // extras first
         var progress = new Progress<string>(text => _progress.Text = text);
+        _working = true;
         try
         {
             await Task.Run(() => Installer.Install(options, progress));
             _result = SetupResult.Installed;
+            if (extras)
+            {
+                _progress.Text = "Setting up the extras… Windows asks for permission once" + (openRgb ? " (downloading OpenRGB takes a minute)." : ".");
+                var outcome = await Extras.SetUpAsync(Installer.InstalledExe, openRgb, cpuSensor);
+                _progress.Text = outcome switch
+                {
+                    Extras.Result.Done => "Extras set up.",
+                    Extras.Result.Declined => "Extras skipped (permission declined). OverMount offers them again on its Home page.",
+                    _ => "Some extras could not be set up. OverMount offers them again on its Home page.",
+                };
+                if (_launch.Checked)
+                {
+                    Installer.Launch();
+                    _working = false;
+                    Close();
+                    return;
+                }
+            }
+            _working = false;
             if (options.Launch) { Close(); return; }
-            _progress.Text = "Done. Find OverMount in the Start menu.";
+            _progress.Text = (extras ? _progress.Text + " " : "") + "Done. Find OverMount in the Start menu.";
             _cancel.Text = "Close";
             _cancel.Enabled = true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException
                                       or System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException)
         {
+            _working = false;
             Log.Write($"Install failed: {e}");
             _progress.ForeColor = Color.FromArgb(255, 120, 90);
             _progress.Text = $"Setup failed: {e.Message}";
-            foreach (var c in new Control[] { _install, _portable, _cancel, _autostart, _desktop, _launch }) c.Enabled = true;
+            foreach (var c in all) c.Enabled = true;
         }
     }
 

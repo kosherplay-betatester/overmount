@@ -62,6 +62,14 @@ public class LightDevicesTests
         Assert.Equal(expected, OpenRgbSetup.GamingLaptop(maker, model));
 
     [Fact]
+    public void Openrgb_download_fallback_is_the_official_release_pinned_by_hash()
+    {
+        Assert.StartsWith("https://github.com/CalcProgrammer1/OpenRGB/releases/download/", OpenRgbSetup.MsiUrl);
+        Assert.EndsWith(".msi", OpenRgbSetup.MsiUrl);
+        Assert.Matches("^[0-9a-f]{64}$", OpenRgbSetup.MsiSha256);
+    }
+
+    [Fact]
     public void Openrgb_starts_with_windows_from_an_elevated_logon_task()
     {
         var xml = OpenRgbSetup.TaskXml(@"C:\Program Files\OpenRGB\OpenRGB.exe", "S-1-5-21-1-2-3-1001");

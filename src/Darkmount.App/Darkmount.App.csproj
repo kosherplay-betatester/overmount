@@ -20,7 +20,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.6.0</Version>
+    <Version>1.6.1</Version>
     <Product>OverMount</Product>
     <Copyright>Copyright (c) 2026 kosherplay-betatester and OverMount contributors. MIT License.</Copyright>
     <Description>OverMount: live PC stats, per-key RGB, macros and profiles for be quiet! Dark Mount and Light Mount keyboards.</Description>

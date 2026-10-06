@@ -25,6 +25,13 @@ public static class OpenRgbSetup
     public const string TaskName = "OverMount OpenRGB";
     public const string ServerArgs = "--server --startminimized";
 
+    /// <summary>
+    /// The official OpenRGB 1.0 installer (the one winget installs) and its SHA-256, used when winget isn't available:
+    /// the file is only run if it matches.
+    /// </summary>
+    internal const string MsiUrl = "https://github.com/CalcProgrammer1/OpenRGB/releases/download/release_1.0/OpenRGB_1.0_Windows_64_81bbe18.msi";
+    internal const string MsiSha256 = "27cd65546ea321eb61403825af494bb5caf2a212bafdbd55de7a061b0c3ef553";
+
     public static bool Installed => Companions.FindExe(App) is not null;
     public static bool Running => Companions.IsRunning(App);
     public static bool StartsWithWindows => Companions.RunQuiet("schtasks", $"/Query /TN \"{TaskName}\"") == 0;
@@ -98,20 +105,23 @@ public static class OpenRgbSetup
             bool battery = SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery;
             if (battery)
                 foreach (var model in new[] { bios?.GetValue("SystemFamily") as string, bios?.GetValue("SystemProductName") as string })
-                    if (GamingLaptop(maker, model) is { } laptop) return laptop;
+                    if (GamingLaptop(maker, model) is { } found) return found;
         }
         catch (Exception e) when (e is SecurityException or UnauthorizedAccessException or IOException)
         {
             Log.Write($"OpenRGB check: PC model unreadable: {e.Message}");
         }
         const uint keyboardUsage = (0x01u << 16) | 0x06;
+        bool laptop = SystemInformation.PowerStatus.BatteryChargeStatus != BatteryChargeStatus.NoSystemBattery;
         foreach (var device in HidSharp.DeviceList.Local.GetHidDevices())
         {
             if (!RgbKeyboardMakers.TryGetValue(device.VendorID, out var maker)) continue;
             try
             {
-                if (HidReportDescriptor.Parse(device.GetRawReportDescriptor()).Fields.Any(f => f.ApplicationUsage == keyboardUsage))
-                    return $"{maker} keyboard";
+                var fields = HidReportDescriptor.Parse(device.GetRawReportDescriptor()).Fields;
+                if (fields.Any(f => f.ApplicationUsage == keyboardUsage)) return laptop && maker == "ASUS" ? "ASUS laptop keyboard" : $"{maker} keyboard";
+                // ASUS laptops whose model name isn't on the list: the keyboard's Aura lighting controller (page 0xFF31).
+                if (laptop && device.VendorID == 0x0B05 && fields.Any(f => f.ApplicationUsage >> 16 == 0xFF31)) return "ASUS laptop keyboard";
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or FormatException) { }
         }
@@ -128,7 +138,6 @@ public static class OpenRgbSetup
     /// </summary>
     public static async Task<Result> SetUpAsync()
     {
-        if (!Installed && !Companions.WingetAvailable()) return Result.NoWinget;
         var sid = WindowsIdentity.GetCurrent().User?.Value;
         var exe = Environment.ProcessPath;
         if (sid is null || exe is null) return Result.Failed;
@@ -196,9 +205,44 @@ public static class OpenRgbSetup
         """;
 
     /// <summary>
-    /// "--setup-openrgb &lt;sid&gt;", elevated: installs OpenRGB with winget when missing, creates the logon task (only
-    /// for an OpenRGB under Program Files, so nothing a normal program wrote runs with administrator rights) and starts it.
+    /// "--setup-openrgb &lt;sid&gt;", elevated: installs OpenRGB when missing (winget, else the official installer after
+    /// checking its SHA-256), creates the logon task (only for an OpenRGB under Program Files, so nothing a normal program
+    /// wrote runs with administrator rights) and starts it with its server — restarting an OpenRGB that runs without one.
     /// </summary>
+    /// <summary>Downloads the official installer into Program Files\OverMount, checks its SHA-256 and installs it silently.</summary>
+    static void InstallFromRelease()
+    {
+        var msi = CpuSensorSetup.ProtectedTempFile("openrgb.msi");
+        try
+        {
+            Log.Write("winget unavailable or failed: downloading OpenRGB's installer");
+            // The whole download is bounded (HttpClient.Timeout only covers the headers): a stalled connection can't hang setup.
+            using (var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(5)))
+            using (var http = new System.Net.Http.HttpClient())
+            using (var file = File.Create(msi))
+            using (var body = http.GetStreamAsync(MsiUrl, cancel.Token).GetAwaiter().GetResult())
+                body.CopyToAsync(file, cancel.Token).GetAwaiter().GetResult();
+            string hash;
+            using (var read = File.OpenRead(msi)) hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(read));
+            if (!hash.Equals(MsiSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Write($"OpenRGB installer has an unexpected SHA-256 ({hash}); not installing it");
+                return;
+            }
+            int rc = Companions.RunQuiet("msiexec", $"/i \"{msi}\" /qn /norestart", TimeSpan.FromMinutes(10));
+            Log.Write($"OpenRGB installer: exit {rc}");
+        }
+        catch (Exception e) when (e is System.Net.Http.HttpRequestException or IOException or UnauthorizedAccessException
+                                      or OperationCanceledException or InvalidOperationException)
+        {
+            Log.Write($"Downloading OpenRGB failed: {e.Message}");
+        }
+        finally
+        {
+            try { File.Delete(msi); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
     public static int RunElevatedSetup(string userSid)
     {
         try
@@ -209,6 +253,7 @@ public static class OpenRgbSetup
                 int rc = Companions.RunQuiet("winget", Companions.WingetInstallArgs(App), TimeSpan.FromMinutes(10));
                 Log.Write($"winget install {App.WingetId}: exit {rc}");
             }
+            if (Companions.FindExe(App, trustedOnly: true) is null) InstallFromRelease();
             var exe = Companions.FindExe(App, trustedOnly: true);
             if (exe is null) return 2;
             var xml = CpuSensorSetup.ProtectedTempFile("openrgb-task.xml");
@@ -218,7 +263,26 @@ public static class OpenRgbSetup
                 if (Companions.RunQuiet("schtasks", $"/Create /TN \"{TaskName}\" /XML \"{xml}\" /F") != 0) return 3;
             }
             finally { File.Delete(xml); }
-            if (!Companions.IsRunning(App)) Companions.RunQuiet("schtasks", $"/Run /TN \"{TaskName}\"");
+            // An OpenRGB that is just starting scans its devices before its server listens: give it time first.
+            for (int i = 0; i < 30 && Companions.IsRunning(App) && !ServerReachable(); i++) Thread.Sleep(500);
+            if (!ServerReachable())
+            {
+                // An OpenRGB open without its server (started by hand or by its own autostart) would make the task's start
+                // a no-op: close it — only in this sign-in session, never another user's — so the task starts it with the server.
+                int session = Process.GetCurrentProcess().SessionId;
+                foreach (var p in Process.GetProcessesByName(App.ProcessName))
+                    using (p)
+                    {
+                        try
+                        {
+                            if (p.SessionId != session) continue;
+                            p.Kill();
+                            p.WaitForExit(5000);
+                        }
+                        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException) { }
+                    }
+                Companions.RunQuiet("schtasks", $"/Run /TN \"{TaskName}\"");
+            }
             Log.Write("OpenRGB set up");
             return 0;
         }
